@@ -142,14 +142,10 @@ steps:
         done
         echo "ERROR: Failed to push after 5 attempts"
         exit 1
+    environment:
+      INFRA_TOKEN:
+        from_secret: infra_repo_token
     depends_on: [push-image]
-    backend_options:
-      kubernetes:
-        secrets:
-          - name: woodpecker-ci-secrets
-            key: infra_repo_token
-            target:
-              env: INFRA_TOKEN
 
 services:
   - name: postgres
