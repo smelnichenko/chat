@@ -119,13 +119,14 @@ steps:
     image: alpine:latest
     commands:
       - apk add --no-cache git
+      - printf "machine git.pmon.dev\nlogin woodpecker\npassword %s\n" "$INFRA_TOKEN" > ~/.netrc && chmod 600 ~/.netrc
       - GIT_HASH=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
       - |
         HELMRELEASE=clusters/production/monitor/helmrelease.yaml
 
         for attempt in 1 2 3 4 5; do
           rm -rf /tmp/infra
-          git clone "https://woodpecker:${INFRA_TOKEN}@git.pmon.dev/schnappy/infra.git" /tmp/infra
+          git clone https://git.pmon.dev/schnappy/infra.git /tmp/infra
           cd /tmp/infra
           git config user.name "Woodpecker CD"
           git config user.email "woodpecker@pmon.dev"
