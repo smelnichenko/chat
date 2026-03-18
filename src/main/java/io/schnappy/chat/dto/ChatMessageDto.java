@@ -1,19 +1,18 @@
 package io.schnappy.chat.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Value;
-import tools.jackson.databind.annotation.JsonDeserialize;
-import tools.jackson.databind.annotation.JsonPOJOBuilder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
-@Value
+@Data
 @Builder
-@JsonDeserialize(builder = ChatMessageDto.ChatMessageDtoBuilder.class)
+@NoArgsConstructor
+@AllArgsConstructor
 public class ChatMessageDto {
 
-    @JsonPOJOBuilder(withPrefix = "")
-    public static class ChatMessageDtoBuilder {}
     String messageId;
     long channelId;
     long userId;
