@@ -1,5 +1,6 @@
-# CD: Test + Build + Deploy on push to main
-# Builds chat service image and deploys via shared Helm release in monitor repo
+# CD: Test + Build + Push on push to main
+# Builds chat service image and pushes to Forgejo registry
+# Deployment is handled by the monitor repo's CD pipeline
 
 when:
   - branch: main
@@ -112,41 +113,6 @@ steps:
             key: registry_token
             target:
               env: REGISTRY_TOKEN
-
-  # ============== DEPLOY ==============
-  - name: deploy
-    image: alpine/helm:latest
-    commands:
-      - GIT_HASH=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
-      - apk add --no-cache curl jq kubectl git
-      - |
-        KUBE_OK=false
-        for i in $(seq 1 30); do
-          if curl -sf --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-            -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-            "https://kubernetes.default.svc/api" >/dev/null 2>&1; then
-            KUBE_OK=true
-            break
-          fi
-          echo "Waiting for Kubernetes API connectivity... ($i/30)"
-          sleep 1
-        done
-        [ "$KUBE_OK" = "true" ] || { echo "ERROR: Kubernetes API unreachable after 30s"; exit 1; }
-      - |
-        git clone --depth 1 https://git.pmon.dev/schnappy/monitor.git /tmp/monitor
-      - |
-        helm upgrade --install monitor /tmp/monitor/infra/helm \
-          --namespace monitor \
-          -f /tmp/monitor/infra/helm/values-production.yaml \
-          --set-string "chatService.image.tag=$GIT_HASH" \
-          --timeout 600s
-
-        echo "Waiting for chat rollout..."
-        kubectl rollout status deploy/monitor-chat -n monitor --timeout=120s
-    depends_on: [push-image]
-    backend_options:
-      kubernetes:
-        serviceAccountName: woodpecker-deployer
 
 services:
   - name: postgres
