@@ -11,20 +11,20 @@ import io.schnappy.chat.dto.SetChannelKeysRequest;
 import io.schnappy.chat.dto.UploadKeysRequest;
 import io.schnappy.chat.dto.UserKeysDto;
 import io.schnappy.chat.repository.ScyllaMessageRepository;
+import io.schnappy.chat.security.GatewayUser;
+import io.schnappy.chat.security.Permission;
+import io.schnappy.chat.security.RequirePermission;
 import io.schnappy.chat.service.ChatService;
-import io.schnappy.common.security.Permission;
-import io.schnappy.common.security.RequirePermission;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -44,14 +44,14 @@ public class ChatController {
     private final ChatProperties chatProperties;
 
     @GetMapping("/channels")
-    public List<ChannelDto> getChannels(@AuthenticationPrincipal Jwt jwt) {
-        return chatService.getAllChannelsWithMembership(getUserId(jwt));
+    public List<ChannelDto> getChannels(@RequestAttribute("gatewayUser") GatewayUser user) {
+        return chatService.getAllChannelsWithMembership(user.userId());
     }
 
     @PostMapping("/channels")
     public ResponseEntity<ChannelDto> createChannel(@Valid @RequestBody CreateChannelRequest request,
-                                                     @AuthenticationPrincipal Jwt jwt) {
-        var channel = chatService.createChannel(request, getUserId(jwt));
+                                                     @RequestAttribute("gatewayUser") GatewayUser user) {
+        var channel = chatService.createChannel(request, user.userId());
         var dto = ChannelDto.builder()
             .id(channel.getId())
             .name(channel.getName())
@@ -67,126 +67,126 @@ public class ChatController {
 
     @PostMapping("/channels/{channelId}/leave")
     public ResponseEntity<Void> leaveChannel(@PathVariable Long channelId,
-                                             @AuthenticationPrincipal Jwt jwt) {
-        chatService.leaveChannel(channelId, getUserId(jwt));
+                                             @RequestAttribute("gatewayUser") GatewayUser user) {
+        chatService.leaveChannel(channelId, user.userId());
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/channels/{channelId}")
     public ResponseEntity<Void> deleteChannel(@PathVariable Long channelId,
-                                              @AuthenticationPrincipal Jwt jwt) {
-        chatService.deleteChannel(channelId, getUserId(jwt));
+                                              @RequestAttribute("gatewayUser") GatewayUser user) {
+        chatService.deleteChannel(channelId, user.userId());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/channels/{channelId}/messages")
     public List<ChatMessageDto> getMessages(@PathVariable Long channelId,
                                             @RequestParam(defaultValue = "50") int limit,
-                                            @AuthenticationPrincipal Jwt jwt) {
-        requireMembership(channelId, jwt);
+                                            @RequestAttribute("gatewayUser") GatewayUser user) {
+        requireMembership(channelId, user);
         return chatService.getMessages(channelId, Math.min(limit, 100));
     }
 
     @PostMapping("/channels/{channelId}/messages")
     public ResponseEntity<ChatMessageDto> sendMessage(@PathVariable Long channelId,
                                                        @Valid @RequestBody SendMessageRequest request,
-                                                       @AuthenticationPrincipal Jwt jwt) {
-        requireMembership(channelId, jwt);
-        var message = chatService.sendMessage(channelId, request, getUserId(jwt), getUsername(jwt));
+                                                       @RequestAttribute("gatewayUser") GatewayUser user) {
+        requireMembership(channelId, user);
+        var message = chatService.sendMessage(channelId, request, user.userId(), user.email());
         return ResponseEntity.status(HttpStatus.CREATED).body(message);
     }
 
     @GetMapping("/channels/{channelId}/members")
     public List<Map<String, Object>> getMembers(@PathVariable Long channelId,
-                                                           @AuthenticationPrincipal Jwt jwt) {
-        requireMembership(channelId, jwt);
+                                                           @RequestAttribute("gatewayUser") GatewayUser user) {
+        requireMembership(channelId, user);
         return chatService.getChannelMembers(channelId);
     }
 
     @PostMapping("/channels/{channelId}/kick")
     public ResponseEntity<Void> kickUser(@PathVariable Long channelId,
                                          @RequestBody Map<String, Long> body,
-                                         @AuthenticationPrincipal Jwt jwt) {
+                                         @RequestAttribute("gatewayUser") GatewayUser user) {
         Long userId = body.get("userId");
         if (userId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userId is required");
         }
-        chatService.kickFromChannel(channelId, userId, getUserId(jwt));
+        chatService.kickFromChannel(channelId, userId, user.userId());
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/channels/{channelId}/invite")
     public ResponseEntity<Void> inviteUser(@PathVariable Long channelId,
                                            @RequestBody Map<String, Long> body,
-                                           @AuthenticationPrincipal Jwt jwt) {
+                                           @RequestAttribute("gatewayUser") GatewayUser user) {
         Long userId = body.get("userId");
         if (userId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userId is required");
         }
-        chatService.inviteToChannel(channelId, userId, getUserId(jwt));
+        chatService.inviteToChannel(channelId, userId, user.userId());
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/users")
-    public List<Map<String, Object>> getUsers(@AuthenticationPrincipal Jwt jwt) {
-        return chatService.getChatUsers(getUserId(jwt));
+    public List<Map<String, Object>> getUsers(@RequestAttribute("gatewayUser") GatewayUser user) {
+        return chatService.getChatUsers(user.userId());
     }
 
     @PutMapping("/channels/{channelId}/messages/{messageId}")
     public ResponseEntity<Void> editMessage(@PathVariable Long channelId,
                                             @PathVariable String messageId,
                                             @Valid @RequestBody EditMessageRequest request,
-                                            @AuthenticationPrincipal Jwt jwt) {
-        requireMembership(channelId, jwt);
-        chatService.editMessage(channelId, messageId, request.content(), getUserId(jwt));
+                                            @RequestAttribute("gatewayUser") GatewayUser user) {
+        requireMembership(channelId, user);
+        chatService.editMessage(channelId, messageId, request.content(), user.userId());
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/channels/{channelId}/messages/{messageId}/edits")
     public List<ScyllaMessageRepository.EditRecord> getMessageEdits(@PathVariable Long channelId,
                                                                      @PathVariable String messageId,
-                                                                     @AuthenticationPrincipal Jwt jwt) {
-        requireMembership(channelId, jwt);
+                                                                     @RequestAttribute("gatewayUser") GatewayUser user) {
+        requireMembership(channelId, user);
         return chatService.getMessageEdits(channelId, messageId);
     }
 
     @GetMapping("/channels/{channelId}/verify")
     public ScyllaMessageRepository.ChainVerification verifyChain(@PathVariable Long channelId,
-                                                                  @AuthenticationPrincipal Jwt jwt) {
-        requireMembership(channelId, jwt);
+                                                                  @RequestAttribute("gatewayUser") GatewayUser user) {
+        requireMembership(channelId, user);
         return chatService.verifyChain(channelId);
     }
 
     @PostMapping("/channels/{channelId}/read")
     public ResponseEntity<Void> markAsRead(@PathVariable Long channelId,
-                                           @AuthenticationPrincipal Jwt jwt) {
-        chatService.updateLastRead(channelId, getUserId(jwt));
+                                           @RequestAttribute("gatewayUser") GatewayUser user) {
+        chatService.updateLastRead(channelId, user.userId());
         return ResponseEntity.ok().build();
     }
 
     // --- E2E Encryption: Key Management ---
 
     @GetMapping("/keys")
-    public ResponseEntity<UserKeysDto> getKeys(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<UserKeysDto> getKeys(@RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        var keys = chatService.getUserKeys(getUserId(jwt));
+        var keys = chatService.getUserKeys(user.userId());
         if (keys == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(keys);
     }
 
     @PostMapping("/keys")
     public ResponseEntity<UserKeysDto> uploadKeys(@Valid @RequestBody UploadKeysRequest request,
-                                                   @AuthenticationPrincipal Jwt jwt) {
+                                                   @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        var keys = chatService.uploadUserKeys(request, getUserId(jwt));
+        var keys = chatService.uploadUserKeys(request, user.userId());
         return ResponseEntity.status(HttpStatus.CREATED).body(keys);
     }
 
     @PutMapping("/keys")
     public ResponseEntity<Void> updateKeys(@Valid @RequestBody UploadKeysRequest request,
-                                            @AuthenticationPrincipal Jwt jwt) {
+                                            @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        chatService.updateUserKeys(request, getUserId(jwt));
+        chatService.updateUserKeys(request, user.userId());
         return ResponseEntity.ok().build();
     }
 
@@ -200,28 +200,28 @@ public class ChatController {
     public ResponseEntity<List<ChannelKeyBundleDto>> getChannelKeys(
             @PathVariable Long channelId,
             @RequestParam(required = false) Integer keyVersion,
-            @AuthenticationPrincipal Jwt jwt) {
+            @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        requireMembership(channelId, jwt);
-        var bundles = chatService.getChannelKeyBundles(channelId, getUserId(jwt), keyVersion);
+        requireMembership(channelId, user);
+        var bundles = chatService.getChannelKeyBundles(channelId, user.userId(), keyVersion);
         return ResponseEntity.ok(bundles);
     }
 
     @PostMapping("/channels/{channelId}/keys")
     public ResponseEntity<Void> setChannelKeys(@PathVariable Long channelId,
                                                 @Valid @RequestBody SetChannelKeysRequest request,
-                                                @AuthenticationPrincipal Jwt jwt) {
+                                                @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        chatService.setChannelKeys(channelId, request, getUserId(jwt));
+        chatService.setChannelKeys(channelId, request, user.userId());
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/channels/{channelId}/keys/rotate")
     public ResponseEntity<Map<String, Integer>> rotateChannelKeys(@PathVariable Long channelId,
                                                     @Valid @RequestBody SetChannelKeysRequest request,
-                                                    @AuthenticationPrincipal Jwt jwt) {
+                                                    @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        int newVersion = chatService.rotateChannelKeys(channelId, request, getUserId(jwt));
+        int newVersion = chatService.rotateChannelKeys(channelId, request, user.userId());
         return ResponseEntity.ok(Map.of("newKeyVersion", newVersion));
     }
 
@@ -231,17 +231,9 @@ public class ChatController {
         }
     }
 
-    private void requireMembership(Long channelId, Jwt jwt) {
-        if (!chatService.isMember(channelId, getUserId(jwt))) {
+    private void requireMembership(Long channelId, GatewayUser user) {
+        if (!chatService.isMember(channelId, user.userId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member of this channel");
         }
-    }
-
-    private Long getUserId(Jwt jwt) {
-        return jwt.getClaim("uid");
-    }
-
-    private String getUsername(Jwt jwt) {
-        return jwt.getClaimAsString("email");
     }
 }
