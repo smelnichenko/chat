@@ -114,6 +114,43 @@ steps:
             target:
               env: REGISTRY_TOKEN
 
+  # ============== UPDATE INFRA REPO (Flux deploys) ==============
+  - name: update-infra
+    image: alpine:latest
+    commands:
+      - apk add --no-cache git
+      - GIT_HASH=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
+      - |
+        HELMRELEASE=clusters/production/monitor/helmrelease.yaml
+
+        for attempt in 1 2 3 4 5; do
+          rm -rf /tmp/infra
+          git clone "https://woodpecker:${INFRA_TOKEN}@git.pmon.dev/schnappy/infra.git" /tmp/infra
+          cd /tmp/infra
+          git config user.name "Woodpecker CD"
+          git config user.email "woodpecker@pmon.dev"
+
+          sed -i "s|tag: \".*\"  # chat-service|tag: \"$GIT_HASH\"  # chat-service|" "$HELMRELEASE"
+
+          git add -A
+          git diff --cached --quiet && { echo "No changes to commit"; exit 0; }
+          git commit -m "deploy: chat=$GIT_HASH"
+          git push && { echo "Push succeeded"; exit 0; }
+
+          echo "Push conflict (attempt $attempt), retrying..."
+          sleep $((attempt * 2))
+        done
+        echo "ERROR: Failed to push after 5 attempts"
+        exit 1
+    depends_on: [push-image]
+    backend_options:
+      kubernetes:
+        secrets:
+          - name: woodpecker-ci-secrets
+            key: infra_repo_token
+            target:
+              env: INFRA_TOKEN
+
 services:
   - name: postgres
     image: postgres:17-alpine
