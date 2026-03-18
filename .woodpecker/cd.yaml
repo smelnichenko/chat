@@ -71,7 +71,7 @@ steps:
       - mkdir -p .docker-context
       - jar=$(ls build/libs/*.jar | grep -v plain | head -1)
       - cp "$jar" .docker-context/app.jar
-      - cp Dockerfile.runtime .docker-context/Dockerfile
+      - cp Dockerfile .docker-context/Dockerfile
     depends_on: [test, sonar]
     backend_options:
       kubernetes:
