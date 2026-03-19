@@ -27,25 +27,29 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
         String userId = request.getHeader("X-User-ID");
 
         if (userId != null && !userId.isBlank()) {
-            String permissions = request.getHeader("X-User-Permissions");
-            List<String> permList = permissions != null && !permissions.isBlank()
-                    ? Arrays.asList(permissions.split(","))
-                    : List.of();
+            try {
+                String permissions = request.getHeader("X-User-Permissions");
+                List<String> permList = permissions != null && !permissions.isBlank()
+                        ? Arrays.asList(permissions.split(","))
+                        : List.of();
 
-            var user = new GatewayUser(
-                    Long.parseLong(userId),
-                    request.getHeader("X-User-UUID"),
-                    request.getHeader("X-User-Email"),
-                    permList
-            );
+                var user = new GatewayUser(
+                        Long.parseLong(userId),
+                        request.getHeader("X-User-UUID"),
+                        request.getHeader("X-User-Email"),
+                        permList
+                );
 
-            request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
+                request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
-            var authorities = permList.stream()
-                    .map(SimpleGrantedAuthority::new)
-                    .toList();
-            var auth = new UsernamePasswordAuthenticationToken(user, null, authorities);
-            SecurityContextHolder.getContext().setAuthentication(auth);
+                var authorities = permList.stream()
+                        .map(SimpleGrantedAuthority::new)
+                        .toList();
+                var auth = new UsernamePasswordAuthenticationToken(user, null, authorities);
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            } catch (NumberFormatException _) {
+                // Malformed X-User-ID — treat as unauthenticated
+            }
         }
 
         filterChain.doFilter(request, response);
