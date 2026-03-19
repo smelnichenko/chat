@@ -1,0 +1,22 @@
+# Nightly mutation testing with Pitest
+# Woodpecker cron: pitest-nightly, schedule: 0 3 * * *, branch: main
+
+when:
+  - event: cron
+    cron: pitest-nightly
+
+steps:
+  - name: pitest
+    image: eclipse-temurin:25-jdk
+    commands:
+      - ./gradlew pitest --no-daemon
+    backend_options:
+      kubernetes:
+        resources:
+          requests: { cpu: 500m, memory: 2Gi }
+          limits: { cpu: 4000m, memory: 4Gi }
+        secrets:
+          - name: woodpecker-ci-secrets
+            key: nexus_url
+            target:
+              env: NEXUS_URL
