@@ -2,6 +2,7 @@ plugins {
     id 'org.springframework.boot' version '4.0.3'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'org.sonarqube' version '7.2.3.7755'
+    id 'com.github.spotbugs' version '6.4.8'
     id 'jacoco'
     id 'java'
 }
@@ -62,6 +63,20 @@ jacocoTestReport {
     }
 }
 
+spotbugs {
+    toolVersion = '4.9.8'
+    excludeFilter = file('spotbugs-exclude.xml')
+}
+
+spotbugsMain {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+check.dependsOn spotbugsMain
+
 sonar {
     properties {
         property 'sonar.projectKey', 'monitor-chat'
@@ -71,6 +86,7 @@ sonar {
         property 'sonar.java.source', '25'
         property 'sonar.coverage.jacoco.xmlReportPaths', "${buildDir}/reports/jacoco/test/jacocoTestReport.xml"
         property 'sonar.coverage.exclusions', '**/config/**,**/dto/**,**/entity/**'
+        property 'sonar.java.spotbugs.reportPaths', "${layout.buildDirectory.get()}/reports/spotbugs/main.xml"
         property 'sonar.qualitygate.wait', 'true'
         property 'sonar.qualitygate.timeout', '300'
     }
