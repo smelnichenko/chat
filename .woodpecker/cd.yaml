@@ -55,8 +55,9 @@ steps:
               env: NEXUS_URL
         volumes:
           - name: nvd-cache
-            persistentVolumeClaim:
-              claimName: woodpecker-nvd-cache
+            hostPath:
+              path: /mnt/storage/nvd-cache
+              type: DirectoryOrCreate
         volumeMounts:
           - name: nvd-cache
             mountPath: /opt/nvd-cache
