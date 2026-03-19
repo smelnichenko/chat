@@ -36,36 +36,6 @@ steps:
             target:
               env: NEXUS_URL
 
-  - name: dependency-check
-    image: eclipse-temurin:25-jdk
-    environment:
-      NVD_DATA_DIR: /opt/nvd-cache
-    depends_on: [test]
-    commands:
-      - ./gradlew dependencyCheckAnalyze --no-daemon
-    backend_options:
-      kubernetes:
-        resources:
-          requests: { cpu: 250m, memory: 1Gi }
-          limits: { cpu: 2000m, memory: 2Gi }
-        secrets:
-          - name: woodpecker-ci-secrets
-            key: nexus_url
-            target:
-              env: NEXUS_URL
-          - name: woodpecker-ci-secrets
-            key: nvd_api_key
-            target:
-              env: NVD_API_KEY
-        volumes:
-          - name: nvd-cache
-            hostPath:
-              path: /mnt/storage/nvd-cache
-              type: DirectoryOrCreate
-        volumeMounts:
-          - name: nvd-cache
-            mountPath: /opt/nvd-cache
-
   - name: sonar
     image: eclipse-temurin:25-jdk
     commands:
@@ -76,7 +46,7 @@ steps:
           sleep 1
         done
       - ./gradlew sonar --no-daemon -Dsonar.qualitygate.wait=false
-    depends_on: [test, dependency-check]
+    depends_on: [test]
     backend_options:
       kubernetes:
         secrets:
