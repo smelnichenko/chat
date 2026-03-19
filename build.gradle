@@ -79,6 +79,9 @@ spotbugsMain {
 check.dependsOn spotbugsMain
 
 dependencyCheck {
+    data {
+        directory = System.getenv('NVD_DATA_DIR') ?: "${System.getProperty('user.home')}/.gradle/dependency-check-data"
+    }
     formats = ['HTML', 'XML']
     failBuildOnCVSS = 9
     analyzers {

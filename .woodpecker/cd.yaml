@@ -36,6 +36,30 @@ steps:
             target:
               env: NEXUS_URL
 
+  - name: dependency-check
+    image: eclipse-temurin:25-jdk
+    environment:
+      NVD_DATA_DIR: /opt/nvd-cache
+    commands:
+      - ./gradlew dependencyCheckAnalyze --no-daemon
+    backend_options:
+      kubernetes:
+        resources:
+          requests: { cpu: 250m, memory: 1Gi }
+          limits: { cpu: 2000m, memory: 2Gi }
+        secrets:
+          - name: woodpecker-ci-secrets
+            key: nexus_url
+            target:
+              env: NEXUS_URL
+        volumes:
+          - name: nvd-cache
+            persistentVolumeClaim:
+              claimName: woodpecker-nvd-cache
+        volumeMounts:
+          - name: nvd-cache
+            mountPath: /opt/nvd-cache
+
   - name: sonar
     image: eclipse-temurin:25-jdk
     commands:
