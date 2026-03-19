@@ -40,6 +40,7 @@ steps:
     image: eclipse-temurin:25-jdk
     environment:
       NVD_DATA_DIR: /opt/nvd-cache
+      GRADLE_USER_HOME: /tmp/gradle-dc
     commands:
       - ./gradlew dependencyCheckAnalyze --no-daemon
     backend_options:
