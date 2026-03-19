@@ -1,17 +1,20 @@
 package io.schnappy.chat.service;
 
+import io.schnappy.chat.entity.ChatUser;
+import io.schnappy.chat.repository.ChatUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Local read model for user data. Populated from user.events Kafka topic.
- * Falls back to JWT email if cache miss (profile updates are rare).
+ * User cache backed by PostgreSQL (chat_users table) with Redis as read-through cache.
+ * Populated from Kafka user.events and gateway headers.
  */
 @Slf4j
 @Service
@@ -23,41 +26,89 @@ public class UserCacheService {
     private static final String ADMIN_USERS_KEY = "chat:admin-users";
 
     private final StringRedisTemplate redisTemplate;
+    private final ChatUserRepository chatUserRepository;
 
     public void cacheUser(Long userId, String email, boolean enabled) {
+        // Write to PostgreSQL (source of truth)
+        var user = chatUserRepository.findById(userId).orElseGet(() -> {
+            var u = new ChatUser();
+            u.setId(userId);
+            return u;
+        });
+        user.setEmail(email);
+        user.setEnabled(enabled);
+        user.setUpdatedAt(Instant.now());
+        chatUserRepository.save(user);
+
+        // Write to Redis (cache)
         redisTemplate.opsForValue().set(USER_EMAIL_KEY + userId, email);
         redisTemplate.opsForValue().set(USER_ENABLED_KEY + userId, String.valueOf(enabled));
     }
 
     public String getEmail(Long userId) {
-        return redisTemplate.opsForValue().get(USER_EMAIL_KEY + userId);
+        // Try Redis first
+        String email = redisTemplate.opsForValue().get(USER_EMAIL_KEY + userId);
+        if (email != null) return email;
+
+        // Fall back to PostgreSQL
+        return chatUserRepository.findById(userId).map(user -> {
+            // Populate Redis cache
+            redisTemplate.opsForValue().set(USER_EMAIL_KEY + userId, user.getEmail());
+            redisTemplate.opsForValue().set(USER_ENABLED_KEY + userId, String.valueOf(user.isEnabled()));
+            return user.getEmail();
+        }).orElse(null);
     }
 
     public boolean isEnabled(Long userId) {
         String val = redisTemplate.opsForValue().get(USER_ENABLED_KEY + userId);
-        return val == null || Boolean.parseBoolean(val);
+        if (val != null) return Boolean.parseBoolean(val);
+
+        // Fall back to PostgreSQL
+        return chatUserRepository.findById(userId).map(user -> {
+            redisTemplate.opsForValue().set(USER_ENABLED_KEY + userId, String.valueOf(user.isEnabled()));
+            return user.isEnabled();
+        }).orElse(true);
+    }
+
+    public void setAdmin(Long userId, boolean admin) {
+        chatUserRepository.findById(userId).ifPresent(user -> {
+            user.setAdmin(admin);
+            user.setUpdatedAt(Instant.now());
+            chatUserRepository.save(user);
+        });
+
+        if (admin) {
+            redisTemplate.opsForSet().add(ADMIN_USERS_KEY, userId.toString());
+        } else {
+            redisTemplate.opsForSet().remove(ADMIN_USERS_KEY, userId.toString());
+        }
     }
 
     public void addAdminUser(Long userId) {
-        redisTemplate.opsForSet().add(ADMIN_USERS_KEY, userId.toString());
+        setAdmin(userId, true);
     }
 
     public void removeAdminUser(Long userId) {
-        redisTemplate.opsForSet().remove(ADMIN_USERS_KEY, userId.toString());
+        setAdmin(userId, false);
     }
 
     public Set<Long> getAdminUserIds() {
         var members = redisTemplate.opsForSet().members(ADMIN_USERS_KEY);
-        if (members == null) return Set.of();
-        return members.stream().map(Long::valueOf).collect(Collectors.toSet());
+        if (members != null && !members.isEmpty()) {
+            return members.stream().map(Long::valueOf).collect(Collectors.toSet());
+        }
+
+        // Fall back to PostgreSQL
+        var admins = chatUserRepository.findByAdminTrue().stream()
+                .map(ChatUser::getId)
+                .collect(Collectors.toSet());
+        admins.forEach(id -> redisTemplate.opsForSet().add(ADMIN_USERS_KEY, id.toString()));
+        return admins;
     }
 
-    /**
-     * Returns user info map for display. Uses cached email, falls back to provided JWT email.
-     */
-    public Map<String, Object> getUserInfo(Long userId, String jwtEmail) {
+    public Map<String, Object> getUserInfo(Long userId, String fallbackEmail) {
         String email = getEmail(userId);
-        if (email == null) email = jwtEmail;
+        if (email == null) email = fallbackEmail;
         return Map.of("id", userId, "email", email != null ? email : "unknown");
     }
 }

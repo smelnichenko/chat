@@ -6,5 +6,6 @@
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
     <include file="changes/001-create-chat-tables.xml" relativeToChangelogFile="true"/>
+    <include file="changes/002-create-chat-users-table.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>
