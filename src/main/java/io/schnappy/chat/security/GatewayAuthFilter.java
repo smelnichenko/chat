@@ -1,9 +1,11 @@
 package io.schnappy.chat.security;
 
+import io.schnappy.chat.service.UserCacheService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,9 +19,13 @@ import java.util.List;
 /**
  * Reads X-User-* headers set by the API gateway after JWT validation.
  * Populates SecurityContext and sets GatewayUser as a request attribute.
+ * Also refreshes the user cache so member lookups always have data.
  */
 @Component
+@RequiredArgsConstructor
 public class GatewayAuthFilter extends OncePerRequestFilter {
+
+    private final UserCacheService userCacheService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -41,6 +47,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                 );
 
                 request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
+                userCacheService.cacheUser(user.userId(), user.email(), true);
 
                 var authorities = permList.stream()
                         .map(SimpleGrantedAuthority::new)
