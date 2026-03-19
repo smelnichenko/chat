@@ -71,7 +71,7 @@ steps:
           sleep 1
         done
       - ./gradlew sonar --no-daemon -Dsonar.qualitygate.wait=false
-    depends_on: [test]
+    depends_on: [test, dependency-check]
     backend_options:
       kubernetes:
         secrets:
