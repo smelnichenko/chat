@@ -53,6 +53,10 @@ steps:
             key: nexus_url
             target:
               env: NEXUS_URL
+          - name: woodpecker-ci-secrets
+            key: nvd_api_key
+            target:
+              env: NVD_API_KEY
         volumes:
           - name: nvd-cache
             hostPath:
