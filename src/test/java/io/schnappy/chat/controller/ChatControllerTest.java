@@ -2,10 +2,16 @@ package io.schnappy.chat.controller;
 
 import io.schnappy.chat.config.ChatProperties;
 import io.schnappy.chat.dto.ChannelDto;
+import io.schnappy.chat.dto.ChannelKeyBundleDto;
 import io.schnappy.chat.dto.ChatMessageDto;
 import io.schnappy.chat.dto.CreateChannelRequest;
+import io.schnappy.chat.dto.EditMessageRequest;
 import io.schnappy.chat.dto.SendMessageRequest;
+import io.schnappy.chat.dto.SetChannelKeysRequest;
+import io.schnappy.chat.dto.UploadKeysRequest;
+import io.schnappy.chat.dto.UserKeysDto;
 import io.schnappy.chat.entity.Channel;
+import io.schnappy.chat.repository.ScyllaMessageRepository;
 import io.schnappy.chat.security.GatewayUser;
 import io.schnappy.chat.service.ChatService;
 import org.junit.jupiter.api.BeforeEach;
@@ -287,11 +293,253 @@ class ChatControllerTest {
         when(chatProperties.e2eEnabled()).thenReturn(true);
         when(chatService.rotateChannelKeys(eq(1L), any(), eq(10L))).thenReturn(3);
 
-        var bundle = new io.schnappy.chat.dto.SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
-        var request = new io.schnappy.chat.dto.SetChannelKeysRequest(List.of(bundle));
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
         var response = chatController.rotateChannelKeys(1L, request, user);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).containsEntry("newKeyVersion", 3);
+    }
+
+    // --- getUsers ---
+
+    @Test
+    void getUsers_delegatesToService() {
+        when(chatService.getChatUsers(10L))
+                .thenReturn(List.of(Map.of("id", 20L, "email", "bob@example.com")));
+
+        var result = chatController.getUsers(user);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)).containsEntry("email", "bob@example.com");
+    }
+
+    // --- editMessage ---
+
+    @Test
+    void editMessage_memberCanEdit_returnsOk() {
+        when(chatService.isMember(1L, 10L)).thenReturn(true);
+
+        var request = new EditMessageRequest("Updated content");
+        var response = chatController.editMessage(1L, "msg-uuid", request, user);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(chatService).editMessage(1L, "msg-uuid", "Updated content", 10L);
+    }
+
+    @Test
+    void editMessage_notMember_throwsForbidden() {
+        when(chatService.isMember(1L, 10L)).thenReturn(false);
+
+        var request = new EditMessageRequest("Updated");
+        assertThatThrownBy(() -> chatController.editMessage(1L, "msg-uuid", request, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    // --- getMessageEdits ---
+
+    @Test
+    void getMessageEdits_memberCanView() {
+        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        var edit = new ScyllaMessageRepository.EditRecord("edit-1", 10L, "v2", "hash", java.time.Instant.now());
+        when(chatService.getMessageEdits(1L, "msg-uuid")).thenReturn(List.of(edit));
+
+        var result = chatController.getMessageEdits(1L, "msg-uuid", user);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).content()).isEqualTo("v2");
+    }
+
+    @Test
+    void getMessageEdits_notMember_throwsForbidden() {
+        when(chatService.isMember(1L, 10L)).thenReturn(false);
+
+        assertThatThrownBy(() -> chatController.getMessageEdits(1L, "msg-uuid", user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    // --- verifyChain ---
+
+    @Test
+    void verifyChain_memberCanVerify() {
+        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        var verification = new ScyllaMessageRepository.ChainVerification(5, 5, true, null);
+        when(chatService.verifyChain(1L)).thenReturn(verification);
+
+        var result = chatController.verifyChain(1L, user);
+
+        assertThat(result.intact()).isTrue();
+        assertThat(result.messageCount()).isEqualTo(5);
+    }
+
+    @Test
+    void verifyChain_notMember_throwsForbidden() {
+        when(chatService.isMember(1L, 10L)).thenReturn(false);
+
+        assertThatThrownBy(() -> chatController.verifyChain(1L, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    // --- uploadKeys (e2e enabled) ---
+
+    @Test
+    void uploadKeys_e2eEnabled_returnsCreated() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+        var keysDto = UserKeysDto.builder()
+                .publicKey("pubkey").encryptedPrivateKey("encpriv")
+                .pbkdf2Salt("salt123456789012345678").pbkdf2Iterations(600000).keyVersion(1).build();
+        when(chatService.uploadUserKeys(any(UploadKeysRequest.class), eq(10L))).thenReturn(keysDto);
+
+        var request = new UploadKeysRequest("pubkey", "encpriv", "salt123456789012345678", 600000);
+        var response = chatController.uploadKeys(request, user);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getPublicKey()).isEqualTo("pubkey");
+    }
+
+    @Test
+    void uploadKeys_e2eDisabled_throwsNotFound() {
+        when(chatProperties.e2eEnabled()).thenReturn(false);
+
+        var request = new UploadKeysRequest("pubkey", "encpriv", "salt123456789012345678", 600000);
+        assertThatThrownBy(() -> chatController.uploadKeys(request, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // --- updateKeys (e2e enabled) ---
+
+    @Test
+    void updateKeys_e2eEnabled_returnsOk() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+
+        var request = new UploadKeysRequest("newpub", "newpriv", "newsalt12345678901234567", 600000);
+        var response = chatController.updateKeys(request, user);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(chatService).updateUserKeys(any(UploadKeysRequest.class), eq(10L));
+    }
+
+    @Test
+    void updateKeys_e2eDisabled_throwsNotFound() {
+        when(chatProperties.e2eEnabled()).thenReturn(false);
+
+        var request = new UploadKeysRequest("newpub", "newpriv", "newsalt12345678901234567", 600000);
+        assertThatThrownBy(() -> chatController.updateKeys(request, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // --- getPublicKeys (e2e enabled) ---
+
+    @Test
+    void getPublicKeys_e2eEnabled_returnsResults() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+        when(chatService.getPublicKeys(List.of(10L, 20L)))
+                .thenReturn(List.of(Map.of("userId", 10L, "publicKey", "pk10", "keyVersion", 1)));
+
+        var result = chatController.getPublicKeys(List.of(10L, 20L));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)).containsEntry("publicKey", "pk10");
+    }
+
+    // --- getChannelKeys (e2e enabled) ---
+
+    @Test
+    void getChannelKeys_e2eEnabled_memberCanFetch() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        var bundleDto = ChannelKeyBundleDto.builder()
+                .userId(10L).keyVersion(1).encryptedChannelKey("enckey").wrapperPublicKey("wrappub").build();
+        when(chatService.getChannelKeyBundles(1L, 10L, null)).thenReturn(List.of(bundleDto));
+
+        var response = chatController.getChannelKeys(1L, null, user);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).hasSize(1);
+        assertThat(response.getBody().get(0).getEncryptedChannelKey()).isEqualTo("enckey");
+    }
+
+    @Test
+    void getChannelKeys_e2eEnabled_withKeyVersion() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.getChannelKeyBundles(1L, 10L, 2)).thenReturn(List.of());
+
+        var response = chatController.getChannelKeys(1L, 2, user);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(chatService).getChannelKeyBundles(1L, 10L, 2);
+    }
+
+    @Test
+    void getChannelKeys_notMember_throwsForbidden() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+        when(chatService.isMember(1L, 10L)).thenReturn(false);
+
+        assertThatThrownBy(() -> chatController.getChannelKeys(1L, null, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void getChannelKeys_e2eDisabled_throwsNotFound() {
+        when(chatProperties.e2eEnabled()).thenReturn(false);
+
+        assertThatThrownBy(() -> chatController.getChannelKeys(1L, null, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // --- setChannelKeys (e2e enabled) ---
+
+    @Test
+    void setChannelKeys_e2eEnabled_returnsOk() {
+        when(chatProperties.e2eEnabled()).thenReturn(true);
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+        var response = chatController.setChannelKeys(1L, request, user);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(chatService).setChannelKeys(1L, request, 10L);
+    }
+
+    @Test
+    void setChannelKeys_e2eDisabled_throwsNotFound() {
+        when(chatProperties.e2eEnabled()).thenReturn(false);
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+        assertThatThrownBy(() -> chatController.setChannelKeys(1L, request, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // --- rotateChannelKeys (e2e disabled) ---
+
+    @Test
+    void rotateChannelKeys_e2eDisabled_throwsNotFound() {
+        when(chatProperties.e2eEnabled()).thenReturn(false);
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+        assertThatThrownBy(() -> chatController.rotateChannelKeys(1L, request, user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

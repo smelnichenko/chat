@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -917,5 +918,88 @@ class ChatServiceTest {
         verify(keyBundleRepository).deleteByChannelId(1L);
         verify(memberRepository).deleteByChannelId(1L);
         verify(channelRepository).delete(channel);
+    }
+
+    // --- getMessageEdits ---
+
+    @Test
+    void getMessageEdits_delegatesToRepositoryWithCorrectBucket() {
+        // Use a real time-based UUID so Uuids.unixTimestamp works
+        UUID msgUuid = com.datastax.oss.driver.api.core.uuid.Uuids.timeBased();
+        String msgId = msgUuid.toString();
+
+        var edit = new io.schnappy.chat.repository.ScyllaMessageRepository.EditRecord(
+                "edit-1", 10L, "edited", "hash", Instant.now());
+        Instant msgTime = Instant.ofEpochMilli(com.datastax.oss.driver.api.core.uuid.Uuids.unixTimestamp(msgUuid));
+        String expectedBucket = io.schnappy.chat.repository.ScyllaMessageRepository.bucketForDate(msgTime);
+
+        when(messageRepository.getEdits(1L, expectedBucket, msgUuid)).thenReturn(List.of(edit));
+
+        var result = chatService.getMessageEdits(1L, msgId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).content()).isEqualTo("edited");
+        verify(messageRepository).getEdits(1L, expectedBucket, msgUuid);
+    }
+
+    // --- deleteChannel not found ---
+
+    @Test
+    void deleteChannel_notFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.deleteChannel(1L, 10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
+    }
+
+    // --- kickFromChannel not found ---
+
+    @Test
+    void kickFromChannel_channelNotFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.kickFromChannel(1L, 20L, 10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
+    }
+
+    // --- leaveChannel not found ---
+
+    @Test
+    void leaveChannel_channelNotFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.leaveChannel(1L, 20L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
+    }
+
+    // --- setChannelKeys not found ---
+
+    @Test
+    void setChannelKeys_channelNotFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+
+        assertThatThrownBy(() -> chatService.setChannelKeys(1L, request, 10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
+    }
+
+    // --- rotateChannelKeys not found ---
+
+    @Test
+    void rotateChannelKeys_channelNotFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+
+        assertThatThrownBy(() -> chatService.rotateChannelKeys(1L, request, 10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
     }
 }

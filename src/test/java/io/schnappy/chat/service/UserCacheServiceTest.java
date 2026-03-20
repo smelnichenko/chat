@@ -273,4 +273,37 @@ class UserCacheServiceTest {
 
         assertThat(info).containsEntry("email", "unknown");
     }
+
+    // --- addAdminUser / removeAdminUser ---
+
+    @Test
+    void addAdminUser_delegatesToSetAdminTrue() {
+        when(redisTemplate.opsForSet()).thenReturn(setOps);
+        var user = new ChatUser();
+        user.setId(10L);
+        when(chatUserRepository.findById(10L)).thenReturn(Optional.of(user));
+        when(chatUserRepository.save(org.mockito.ArgumentMatchers.any(ChatUser.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        userCacheService.addAdminUser(10L);
+
+        assertThat(user.isAdmin()).isTrue();
+        verify(setOps).add("chat:admin-users", "10");
+    }
+
+    @Test
+    void removeAdminUser_delegatesToSetAdminFalse() {
+        when(redisTemplate.opsForSet()).thenReturn(setOps);
+        var user = new ChatUser();
+        user.setId(10L);
+        user.setAdmin(true);
+        when(chatUserRepository.findById(10L)).thenReturn(Optional.of(user));
+        when(chatUserRepository.save(org.mockito.ArgumentMatchers.any(ChatUser.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        userCacheService.removeAdminUser(10L);
+
+        assertThat(user.isAdmin()).isFalse();
+        verify(setOps).remove("chat:admin-users", "10");
+    }
 }
