@@ -45,7 +45,7 @@ steps:
           wget -q --spider --timeout=2 "$SONAR_HOST_URL/api/system/status" 2>/dev/null && break
           sleep 1
         done
-      - git fetch --unshallow || true
+      - git fetch --unshallow
       - ./gradlew sonar --no-daemon -Dsonar.qualitygate.wait=false
     depends_on: [test]
     backend_options:
