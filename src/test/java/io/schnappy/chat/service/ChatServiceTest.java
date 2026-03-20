@@ -1,5 +1,6 @@
 package io.schnappy.chat.service;
 
+import io.schnappy.chat.dto.ChatMessageDto;
 import io.schnappy.chat.dto.CreateChannelRequest;
 import io.schnappy.chat.dto.SendMessageRequest;
 import io.schnappy.chat.dto.SetChannelKeysRequest;
@@ -593,5 +594,328 @@ class ChatServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getEncryptedChannelKey()).isEqualTo("enckey");
+    }
+
+    @Test
+    void getChannelKeyBundles_withKeyVersionFilter_filtersResults() {
+        when(memberRepository.existsByChannelIdAndUserId(1L, 10L)).thenReturn(true);
+
+        var bundleV1 = new ChannelKeyBundle();
+        bundleV1.setChannelId(1L);
+        bundleV1.setUserId(10L);
+        bundleV1.setKeyVersion(1);
+        bundleV1.setEncryptedChannelKey("enckey-v1");
+        bundleV1.setWrapperPublicKey("wrappub");
+
+        var bundleV2 = new ChannelKeyBundle();
+        bundleV2.setChannelId(1L);
+        bundleV2.setUserId(10L);
+        bundleV2.setKeyVersion(2);
+        bundleV2.setEncryptedChannelKey("enckey-v2");
+        bundleV2.setWrapperPublicKey("wrappub");
+
+        when(keyBundleRepository.findByChannelIdAndUserId(1L, 10L)).thenReturn(List.of(bundleV1, bundleV2));
+
+        var result = chatService.getChannelKeyBundles(1L, 10L, 2);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getEncryptedChannelKey()).isEqualTo("enckey-v2");
+    }
+
+    // --- editMessage ---
+
+    @Test
+    void editMessage_ownMessage_savesEdit() {
+        String msgId = java.util.UUID.randomUUID().toString();
+        var original = ChatMessageDto.builder()
+                .messageId(msgId)
+                .channelId(1L)
+                .userId(10L)
+                .username("alice")
+                .content("Original")
+                .createdAt(Instant.now())
+                .hash("original-hash")
+                .build();
+
+        when(messageRepository.getRecentMessages(1L, 100)).thenReturn(List.of(original));
+
+        chatService.editMessage(1L, msgId, "Edited content", 10L);
+
+        verify(messageRepository).saveEdit(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(java.util.UUID.class),
+                org.mockito.ArgumentMatchers.eq(10L),
+                org.mockito.ArgumentMatchers.eq("Edited content"),
+                org.mockito.ArgumentMatchers.eq("original-hash")
+        );
+    }
+
+    @Test
+    void editMessage_messageNotFound_throwsNotFound() {
+        String nonExistentId = java.util.UUID.randomUUID().toString();
+        when(messageRepository.getRecentMessages(1L, 100)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> chatService.editMessage(1L, nonExistentId, "New", 10L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void editMessage_otherUsersMessage_throwsForbidden() {
+        String msgId = java.util.UUID.randomUUID().toString();
+        var original = ChatMessageDto.builder()
+                .messageId(msgId)
+                .channelId(1L)
+                .userId(99L)
+                .username("bob")
+                .content("Bob's message")
+                .createdAt(Instant.now())
+                .hash("hash")
+                .build();
+
+        when(messageRepository.getRecentMessages(1L, 100)).thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> chatService.editMessage(1L, msgId, "Hijacked", 10L))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    // --- verifyChain ---
+
+    @Test
+    void verifyChain_delegatesToRepository() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+
+        chatService.verifyChain(1L);
+
+        verify(messageRepository).verifyChain(1L, channel.getCreatedAt());
+    }
+
+    @Test
+    void verifyChain_channelNotFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.verifyChain(1L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
+    }
+
+    // --- getMessages ---
+
+    @Test
+    void getMessages_delegatesToRepository() {
+        var msg = ChatMessageDto.builder().messageId("m1").channelId(1L).content("Hello").build();
+        when(messageRepository.getRecentMessages(1L, 50)).thenReturn(List.of(msg));
+
+        var result = chatService.getMessages(1L, 50);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getContent()).isEqualTo("Hello");
+    }
+
+    // --- getMembers ---
+
+    @Test
+    void getMembers_delegatesToRepository() {
+        var member = new ChannelMember();
+        member.setChannelId(1L);
+        member.setUserId(10L);
+        when(memberRepository.findByChannelId(1L)).thenReturn(List.of(member));
+
+        var result = chatService.getMembers(1L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getUserId()).isEqualTo(10L);
+    }
+
+    // --- getUserKeys ---
+
+    @Test
+    void getUserKeys_keysExist_returnsDto() {
+        var keys = new UserKeys();
+        keys.setUserId(10L);
+        keys.setPublicKey("pubkey");
+        keys.setEncryptedPrivateKey("encpriv");
+        keys.setPbkdf2Salt("salt123");
+        keys.setPbkdf2Iterations(600000);
+        keys.setKeyVersion(1);
+
+        when(userKeysRepository.findByUserId(10L)).thenReturn(Optional.of(keys));
+
+        var result = chatService.getUserKeys(10L);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getPublicKey()).isEqualTo("pubkey");
+        assertThat(result.getEncryptedPrivateKey()).isEqualTo("encpriv");
+        assertThat(result.getPbkdf2Salt()).isEqualTo("salt123");
+        assertThat(result.getKeyVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void getUserKeys_noKeys_returnsNull() {
+        when(userKeysRepository.findByUserId(10L)).thenReturn(Optional.empty());
+
+        var result = chatService.getUserKeys(10L);
+
+        assertThat(result).isNull();
+    }
+
+    // --- getPublicKeys ---
+
+    @Test
+    void getPublicKeys_returnsMappedResults() {
+        var keys = new UserKeys();
+        keys.setUserId(10L);
+        keys.setPublicKey("pubkey10");
+        keys.setKeyVersion(1);
+
+        when(userKeysRepository.findByUserIdIn(List.of(10L, 20L))).thenReturn(List.of(keys));
+
+        var result = chatService.getPublicKeys(List.of(10L, 20L));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)).containsEntry("userId", 10L);
+        assertThat(result.get(0)).containsEntry("publicKey", "pubkey10");
+        assertThat(result.get(0)).containsEntry("keyVersion", 1);
+    }
+
+    // --- getChannelKeyBundle ---
+
+    @Test
+    void getChannelKeyBundle_bundleExists_returnsDto() {
+        channel.setCurrentKeyVersion(1);
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+
+        var bundle = new ChannelKeyBundle();
+        bundle.setChannelId(1L);
+        bundle.setUserId(10L);
+        bundle.setKeyVersion(1);
+        bundle.setEncryptedChannelKey("enckey");
+        bundle.setWrapperPublicKey("wrappub");
+
+        when(keyBundleRepository.findByChannelIdAndUserIdAndKeyVersion(1L, 10L, 1))
+                .thenReturn(Optional.of(bundle));
+
+        var result = chatService.getChannelKeyBundle(1L, 10L);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getEncryptedChannelKey()).isEqualTo("enckey");
+        assertThat(result.getKeyVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void getChannelKeyBundle_noBundleFound_returnsNull() {
+        channel.setCurrentKeyVersion(1);
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+        when(keyBundleRepository.findByChannelIdAndUserIdAndKeyVersion(1L, 10L, 1))
+                .thenReturn(Optional.empty());
+
+        var result = chatService.getChannelKeyBundle(1L, 10L);
+
+        assertThat(result).isNull();
+    }
+
+    @Test
+    void getChannelKeyBundle_channelNotFound_throwsIllegalArgument() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.getChannelKeyBundle(1L, 10L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Channel not found");
+    }
+
+    // --- getChatUsers ---
+
+    @Test
+    void getChatUsers_excludesCurrentUserAndDisabledUsers() {
+        var member1 = new ChannelMember();
+        member1.setUserId(10L);
+        member1.setChannelId(1L);
+        var member2 = new ChannelMember();
+        member2.setUserId(20L);
+        member2.setChannelId(1L);
+        var member3 = new ChannelMember();
+        member3.setUserId(30L);
+        member3.setChannelId(1L);
+
+        when(memberRepository.findAll()).thenReturn(List.of(member1, member2, member3));
+        when(userCacheService.isEnabled(20L)).thenReturn(true);
+        when(userCacheService.isEnabled(30L)).thenReturn(false);
+        when(userCacheService.getUserInfo(20L, null)).thenReturn(java.util.Map.of("id", 20L, "email", "bob@example.com"));
+
+        // Exclude user 10 (self)
+        var result = chatService.getChatUsers(10L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)).containsEntry("email", "bob@example.com");
+    }
+
+    // --- setChannelKeys (existingKeyVersion > 0, bundle already exists) ---
+
+    @Test
+    void setChannelKeys_existingVersion_skipsExistingBundles() {
+        channel.setCurrentKeyVersion(1);
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+        when(memberRepository.existsByChannelIdAndUserId(1L, 10L)).thenReturn(true);
+        when(keyBundleRepository.findByChannelIdAndUserIdAndKeyVersion(1L, 10L, 1))
+                .thenReturn(Optional.of(new ChannelKeyBundle())); // already exists
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+
+        chatService.setChannelKeys(1L, request, 10L);
+
+        // Should NOT save because the bundle already exists
+        verify(keyBundleRepository, never()).save(any(ChannelKeyBundle.class));
+        // Should NOT update channel version since it's already > 0
+        verify(channelRepository, never()).save(any(Channel.class));
+    }
+
+    @Test
+    void setChannelKeys_nonMember_skipsBundle() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+        when(memberRepository.existsByChannelIdAndUserId(1L, 99L)).thenReturn(false);
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(99L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+
+        chatService.setChannelKeys(1L, request, 10L);
+
+        verify(keyBundleRepository, never()).save(any(ChannelKeyBundle.class));
+    }
+
+    // --- rotateChannelKeys (non-member in bundle list) ---
+
+    @Test
+    void rotateChannelKeys_nonMemberInBundleList_skipped() {
+        channel.setCurrentKeyVersion(1);
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+        when(memberRepository.existsByChannelIdAndUserId(1L, 99L)).thenReturn(false);
+        when(channelRepository.save(any(Channel.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(99L, "enckey", "wrappub");
+        var request = new SetChannelKeysRequest(List.of(bundle));
+
+        int newVersion = chatService.rotateChannelKeys(1L, request, 10L);
+
+        assertThat(newVersion).isEqualTo(2);
+        verify(keyBundleRepository, never()).save(any(ChannelKeyBundle.class));
+    }
+
+    // --- deleteChannel (verifies all cleanup) ---
+
+    @Test
+    void deleteChannel_deletesMessagesAndKeysAndMembers() {
+        when(channelRepository.findById(1L)).thenReturn(Optional.of(channel));
+
+        chatService.deleteChannel(1L, 10L);
+
+        verify(messageRepository).deleteMessagesByChannel(1L, channel.getCreatedAt());
+        verify(keyBundleRepository).deleteByChannelId(1L);
+        verify(memberRepository).deleteByChannelId(1L);
+        verify(channelRepository).delete(channel);
     }
 }
