@@ -6,6 +6,13 @@ when:
       exclude: main
   - event: pull_request
 
+clone:
+  - name: git
+    image: woodpeckerci/plugin-git
+    settings:
+      partial: false
+      depth: 10
+
 steps:
   - name: test
     image: eclipse-temurin:25-jdk
