@@ -37,8 +37,8 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
                     }
                     attributes.put("username", email);
                     return true;
-                } catch (Exception e) {
-                    log.debug("WebSocket auth failed: {}", e.getMessage());
+                } catch (IllegalArgumentException _) {
+                    log.debug("WebSocket auth failed for X-User-ID: {}", userIdHeader);
                 }
             }
         }

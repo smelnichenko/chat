@@ -13,17 +13,17 @@ import java.time.Instant;
 @AllArgsConstructor
 public class ChatMessageDto {
 
-    String messageId;
-    long channelId;
-    long userId;
-    String username;
-    String content;
-    String parentMessageId;
-    Instant createdAt;
-    String hash;
-    String prevHash;
-    String editedContent;
-    Integer keyVersion;
-    String messageType;
-    String metadata;
+    private String messageId;
+    private long channelId;
+    private long userId;
+    private String username;
+    private String content;
+    private String parentMessageId;
+    private Instant createdAt;
+    private String hash;
+    private String prevHash;
+    private String editedContent;
+    private Integer keyVersion;
+    private String messageType;
+    private String metadata;
 }

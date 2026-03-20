@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -47,6 +48,7 @@ public class ScyllaMessageRepository {
     private final PreparedStatement insertEdit;
     private final PreparedStatement selectEdits;
     private final PreparedStatement selectLatestEdit;
+    private final PreparedStatement markEdited;
 
     public ScyllaMessageRepository(CqlSession session) {
         this.session = session;
@@ -93,6 +95,10 @@ public class ScyllaMessageRepository {
             "SELECT content FROM message_edits " +
             "WHERE channel_id = ? AND bucket = ? AND message_id = ? LIMIT 1"
         );
+
+        this.markEdited = session.prepare(
+            "UPDATE messages_by_channel SET edited = true WHERE channel_id = ? AND bucket = ? AND message_id = ?"
+        );
     }
 
     public UUID saveMessage(ChatMessageDto msg, UUID parentMessageId) {
@@ -129,9 +135,7 @@ public class ScyllaMessageRepository {
 
         session.execute(insertEdit.bind(channelId, bucket, messageId, editId, userId, content, editHash));
 
-        session.execute(String.format(
-            "UPDATE messages_by_channel SET edited = true WHERE channel_id = %d AND bucket = '%s' AND message_id = %s",
-            channelId, bucket, messageId));
+        session.execute(markEdited.bind(channelId, bucket, messageId));
     }
 
     public String getLatestEditContent(long channelId, String bucket, UUID messageId) {
@@ -199,7 +203,7 @@ public class ScyllaMessageRepository {
             String yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1).toString();
             messages.addAll(getMessages(channelId, yesterday, null, limit - messages.size()));
         }
-        java.util.Collections.reverse(messages);
+        Collections.reverse(messages);
         return messages;
     }
 

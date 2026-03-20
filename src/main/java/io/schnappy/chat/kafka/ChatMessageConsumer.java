@@ -24,7 +24,7 @@ public class ChatMessageConsumer {
             UUID parentId = message.getParentMessageId() != null
                 ? UUID.fromString(message.getParentMessageId()) : null;
             messageRepository.saveMessage(message, parentId);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Failed to persist message: {}", e.getMessage());
             throw e;
         }

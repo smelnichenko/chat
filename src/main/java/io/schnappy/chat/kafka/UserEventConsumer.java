@@ -18,6 +18,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class UserEventConsumer {
 
+    private static final String EVENT_USER_ID = "userId";
+    private static final String EVENT_EMAIL = "email";
+    private static final String USER_ID_PREFIX = "user #";
+
     private final UserCacheService userCacheService;
     private final SystemChannelService systemChannelService;
 
@@ -43,8 +47,8 @@ public class UserEventConsumer {
     }
 
     private void handleUserRegistered(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
-        String email = (String) event.get("email");
+        Long userId = toLong(event.get(EVENT_USER_ID));
+        String email = (String) event.get(EVENT_EMAIL);
         if (userId == null || email == null) return;
 
         userCacheService.cacheUser(userId, email, true);
@@ -52,8 +56,8 @@ public class UserEventConsumer {
     }
 
     private void handleUserEnabledChanged(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
-        String email = (String) event.get("email");
+        Long userId = toLong(event.get(EVENT_USER_ID));
+        String email = (String) event.get(EVENT_EMAIL);
         boolean enabled = "USER_ENABLED".equals(event.get("type"));
         if (userId == null) return;
 
@@ -62,15 +66,15 @@ public class UserEventConsumer {
     }
 
     private void handleProfileUpdated(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
-        String email = (String) event.get("email");
+        Long userId = toLong(event.get(EVENT_USER_ID));
+        String email = (String) event.get(EVENT_EMAIL);
         if (userId == null || email == null) return;
 
         userCacheService.cacheUser(userId, email, true);
     }
 
     private void handleAdminGranted(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
+        Long userId = toLong(event.get(EVENT_USER_ID));
         if (userId == null) return;
 
         userCacheService.addAdminUser(userId);
@@ -79,7 +83,7 @@ public class UserEventConsumer {
     }
 
     private void handleAdminRevoked(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
+        Long userId = toLong(event.get(EVENT_USER_ID));
         if (userId == null) return;
 
         userCacheService.removeAdminUser(userId);
@@ -87,23 +91,23 @@ public class UserEventConsumer {
     }
 
     private void handleEmailVerified(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
-        String email = (String) event.get("email");
+        Long userId = toLong(event.get(EVENT_USER_ID));
+        String email = (String) event.get(EVENT_EMAIL);
         if (userId == null) return;
 
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(),
-                "New user verified: " + (email != null ? email : "user #" + userId),
+                "New user verified: " + (email != null ? email : USER_ID_PREFIX + userId),
                 null);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.warn("Failed to post email verification notification: {}", e.getMessage());
         }
     }
 
     private void handleRegistrationApproved(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
-        String email = (String) event.get("email");
+        Long userId = toLong(event.get(EVENT_USER_ID));
+        String email = (String) event.get(EVENT_EMAIL);
         if (userId == null) return;
 
         userCacheService.cacheUser(userId, email != null ? email : "unknown", true);
@@ -111,24 +115,24 @@ public class UserEventConsumer {
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(),
-                "Registration approved: " + (email != null ? email : "user #" + userId),
+                "Registration approved: " + (email != null ? email : USER_ID_PREFIX + userId),
                 null);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.warn("Failed to post approval notification: {}", e.getMessage());
         }
     }
 
     private void handleRegistrationDeclined(Map<String, Object> event) {
-        Long userId = toLong(event.get("userId"));
-        String email = (String) event.get("email");
+        Long userId = toLong(event.get(EVENT_USER_ID));
+        String email = (String) event.get(EVENT_EMAIL);
         if (userId == null) return;
 
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(),
-                "Registration declined: " + (email != null ? email : "user #" + userId),
+                "Registration declined: " + (email != null ? email : USER_ID_PREFIX + userId),
                 null);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.warn("Failed to post decline notification: {}", e.getMessage());
         }
     }
@@ -139,7 +143,7 @@ public class UserEventConsumer {
         if (value instanceof String s) {
             try {
                 return Long.parseLong(s);
-            } catch (NumberFormatException e) {
+            } catch (NumberFormatException _) {
                 return null;
             }
         }
