@@ -11,7 +11,6 @@ import org.springframework.kafka.core.KafkaTemplate;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,7 +34,7 @@ class ChatKafkaProducerTest {
                 .createdAt(Instant.now())
                 .build();
 
-        when(kafkaTemplate.send(eq("chat.messages"), eq("42"), eq(message)))
+        when(kafkaTemplate.send("chat.messages", "42", message))
                 .thenReturn(new CompletableFuture<>());
 
         chatKafkaProducer.sendMessage(message);
@@ -51,7 +50,7 @@ class ChatKafkaProducerTest {
                 .content("Test")
                 .build();
 
-        when(kafkaTemplate.send(eq("chat.messages"), eq("7"), eq(message)))
+        when(kafkaTemplate.send("chat.messages", "7", message))
                 .thenReturn(new CompletableFuture<>());
 
         chatKafkaProducer.sendMessage(message);

@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class WebSocketAuthInterceptorTest {
 
@@ -32,9 +33,10 @@ class WebSocketAuthInterceptorTest {
                 mock(WebSocketHandler.class), attributes);
 
         assertThat(result).isTrue();
-        assertThat(attributes.get("userId")).isEqualTo(42L);
-        assertThat(attributes.get("userUuid")).isEqualTo(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"));
-        assertThat(attributes.get("username")).isEqualTo("alice@example.com");
+        assertThat(attributes)
+                .containsEntry("userId", 42L)
+                .containsEntry("userUuid", UUID.fromString("550e8400-e29b-41d4-a716-446655440000"))
+                .containsEntry("username", "alice@example.com");
     }
 
     @Test
@@ -50,8 +52,9 @@ class WebSocketAuthInterceptorTest {
                 mock(WebSocketHandler.class), attributes);
 
         assertThat(result).isTrue();
-        assertThat(attributes.get("userId")).isEqualTo(42L);
-        assertThat(attributes).doesNotContainKey("userUuid");
+        assertThat(attributes)
+                .containsEntry("userId", 42L)
+                .doesNotContainKey("userUuid");
     }
 
     @Test
@@ -124,9 +127,15 @@ class WebSocketAuthInterceptorTest {
     }
 
     @Test
-    void afterHandshake_doesNothing() {
-        // Just verify it doesn't throw
-        interceptor.afterHandshake(mock(ServerHttpRequest.class), mock(ServerHttpResponse.class),
-                mock(WebSocketHandler.class), null);
+    void afterHandshake_doesNotThrow() {
+        var request = mock(ServerHttpRequest.class);
+        var response = mock(ServerHttpResponse.class);
+        var handler = mock(WebSocketHandler.class);
+
+        // afterHandshake is a no-op; verify it completes without exception
+        interceptor.afterHandshake(request, response, handler, null);
+
+        // No interactions expected — method is intentionally empty
+        verifyNoInteractions(request, response, handler);
     }
 }

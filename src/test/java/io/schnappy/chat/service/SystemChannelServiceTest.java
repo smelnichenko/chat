@@ -19,7 +19,6 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -161,7 +160,7 @@ class SystemChannelServiceTest {
         assertThat(msg.getChannelId()).isEqualTo(5L);
         assertThat(msg.getContent()).isEqualTo("Hello system");
         assertThat(msg.getMetadata()).isEqualTo("meta123");
-        assertThat(msg.getUserId()).isEqualTo(0L);
+        assertThat(msg.getUserId()).isZero();
         assertThat(msg.getUsername()).isEqualTo("System");
         assertThat(msg.getMessageType()).isEqualTo("SYSTEM");
         assertThat(msg.getMessageId()).isNotNull();

@@ -80,8 +80,8 @@ class ScyllaMessageRepositoryTest {
         String hash = ScyllaMessageRepository.computeMessageHash("0", 1L, 10L, messageId, "Hello");
 
         // SHA-256 produces 64 hex chars
-        assertThat(hash).hasSize(64);
-        assertThat(hash).matches("[0-9a-f]+");
+        assertThat(hash).hasSize(64)
+                .matches("[0-9a-f]+");
     }
 
     // --- computeEditHash ---
@@ -118,7 +118,7 @@ class ScyllaMessageRepositoryTest {
         UUID editId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
         String hash = ScyllaMessageRepository.computeEditHash("origHash", editId, 10L, "content");
 
-        assertThat(hash).hasSize(64);
-        assertThat(hash).matches("[0-9a-f]+");
+        assertThat(hash).hasSize(64)
+                .matches("[0-9a-f]+");
     }
 }

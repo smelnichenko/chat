@@ -64,7 +64,7 @@ class ChatMessageConsumerTest {
 
         chatMessageConsumer.persistMessage(message);
 
-        verify(messageRepository).saveMessage(eq(message), eq(parentId));
+        verify(messageRepository).saveMessage(message, parentId);
     }
 
     @Test

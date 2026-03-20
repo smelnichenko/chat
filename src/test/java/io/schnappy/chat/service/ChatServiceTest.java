@@ -423,7 +423,7 @@ class ChatServiceTest {
         var result = chatService.getChannelMembers(1L);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).get("email")).isEqualTo("alice@example.com");
+        assertThat(result.get(0)).containsEntry("email", "alice@example.com");
     }
 
     @Test
@@ -437,7 +437,7 @@ class ChatServiceTest {
 
         var result = chatService.getChannelMembers(1L);
 
-        assertThat(result.get(0).get("email")).isEqualTo("unknown");
+        assertThat(result.get(0)).containsEntry("email", "unknown");
     }
 
     // --- uploadUserKeys ---

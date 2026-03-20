@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -179,7 +180,7 @@ class UserEventConsumerTest {
     // --- EMAIL_VERIFIED ---
 
     @Test
-    void handleUserEvent_emailVerified_postsSystemMessage() throws Exception {
+    void handleUserEvent_emailVerified_postsSystemMessage() {
         var adminChannel = new Channel();
         adminChannel.setId(5L);
         when(systemChannelService.getOrCreateAdminChannel()).thenReturn(adminChannel);
@@ -191,7 +192,7 @@ class UserEventConsumerTest {
     }
 
     @Test
-    void handleUserEvent_emailVerified_noEmail_usesUserId() throws Exception {
+    void handleUserEvent_emailVerified_noEmail_usesUserId() {
         var adminChannel = new Channel();
         adminChannel.setId(5L);
         when(systemChannelService.getOrCreateAdminChannel()).thenReturn(adminChannel);
@@ -209,8 +210,9 @@ class UserEventConsumerTest {
     void handleUserEvent_emailVerified_systemChannelThrows_doesNotPropagate() {
         when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new RuntimeException("no admins"));
 
-        // Should not throw
-        userEventConsumer.handleUserEvent(Map.of("type", "EMAIL_VERIFIED", "userId", 42L, "email", "alice@example.com"));
+        assertThatCode(() ->
+                userEventConsumer.handleUserEvent(Map.of("type", "EMAIL_VERIFIED", "userId", 42L, "email", "alice@example.com"))
+        ).doesNotThrowAnyException();
     }
 
     @Test
@@ -257,8 +259,9 @@ class UserEventConsumerTest {
     void handleUserEvent_registrationApproved_systemChannelThrows_doesNotPropagate() {
         when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new RuntimeException("db down"));
 
-        // Should not throw
-        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "userId", 42L, "email", "alice@example.com"));
+        assertThatCode(() ->
+                userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "userId", 42L, "email", "alice@example.com"))
+        ).doesNotThrowAnyException();
     }
 
     // --- REGISTRATION_DECLINED ---
@@ -278,8 +281,9 @@ class UserEventConsumerTest {
     void handleUserEvent_registrationDeclined_systemChannelThrows_doesNotPropagate() {
         when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new RuntimeException("db down"));
 
-        // Should not throw
-        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_DECLINED", "userId", 42L, "email", "bob@example.com"));
+        assertThatCode(() ->
+                userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_DECLINED", "userId", 42L, "email", "bob@example.com"))
+        ).doesNotThrowAnyException();
     }
 
     // --- toLong type coercion ---

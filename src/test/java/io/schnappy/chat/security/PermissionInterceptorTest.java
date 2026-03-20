@@ -51,6 +51,7 @@ class PermissionInterceptorTest {
     // Helper annotation for tests
     @RequirePermission(Permission.CHAT)
     private static class AnnotatedClass {
+        // Method body intentionally empty — only the class-level @RequirePermission annotation is under test
         public void someMethod() {}
     }
 
