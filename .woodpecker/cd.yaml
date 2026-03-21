@@ -125,7 +125,7 @@ steps:
         HELMRELEASE=clusters/production/monitor/helmrelease.yaml
 
         for attempt in 1 2 3 4 5; do
-          rm -rf /tmp/infra
+          cd / && rm -rf /tmp/infra
           git clone https://git.pmon.dev/schnappy/infra.git /tmp/infra
           cd /tmp/infra
           git config user.name "Woodpecker CD"
