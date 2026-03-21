@@ -18,7 +18,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -140,13 +139,6 @@ class ScyllaMessageRepositoryTest {
 
     @Nested
     class InstanceMethodTests {
-
-        private ScyllaMessageRepository createRepository() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            return new ScyllaMessageRepositoryWithSession(session, preparedStmt);
-        }
 
         @Test
         void saveMessage_executesInserts_andReturnsTimeBasedUuid() {
@@ -682,7 +674,7 @@ class ScyllaMessageRepositoryTest {
 
     /** Helper to avoid unused inner class warning */
     private static class ScyllaMessageRepositoryWithSession extends ScyllaMessageRepository {
-        ScyllaMessageRepositoryWithSession(CqlSession session, PreparedStatement stmt) {
+        ScyllaMessageRepositoryWithSession(CqlSession session) {
             super(session);
         }
     }
