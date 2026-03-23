@@ -55,10 +55,6 @@ management:
         enabled: true
 
 monitor:
-  auth:
-    jwt-secret: ${JWT_SECRET}
-    token-expiration: ${TOKEN_EXPIRATION:1h}
-    secure-cookies: ${SECURE_COOKIES:true}
   chat:
     e2e-enabled: ${CHAT_E2E_ENABLED:false}
     scylla:
