@@ -5,7 +5,6 @@ import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -19,25 +18,28 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class GatewayAuthFilterTest {
 
+    private static final String TEST_UUID = "550e8400-e29b-41d4-a716-446655440000";
+
     @Mock
     private UserCacheService userCacheService;
 
     @Mock
     private FilterChain filterChain;
 
-    @InjectMocks
     private GatewayAuthFilter gatewayAuthFilter;
 
     @BeforeEach
-    void clearSecurityContext() {
+    void setUp() {
+        // Resolver that returns 42L for the test UUID, null otherwise
+        UserIdResolver resolver = uuid -> TEST_UUID.equals(uuid) ? 42L : null;
+        gatewayAuthFilter = new GatewayAuthFilter(userCacheService, resolver);
         SecurityContextHolder.clearContext();
     }
 
     @Test
     void validHeaders_populatesSecurityContextAndCachesUser() throws Exception {
         var request = new MockHttpServletRequest();
-        request.addHeader("X-User-ID", "42");
-        request.addHeader("X-User-UUID", "uuid-abc");
+        request.addHeader("X-User-UUID", TEST_UUID);
         request.addHeader("X-User-Email", "alice@example.com");
         request.addHeader("X-User-Permissions", "CHAT,METRICS");
         var response = new MockHttpServletResponse();
@@ -49,8 +51,8 @@ class GatewayAuthFilterTest {
         assertThat(auth.isAuthenticated()).isTrue();
 
         var user = (GatewayUser) auth.getPrincipal();
+        assertThat(user.uuid()).isEqualTo(TEST_UUID);
         assertThat(user.userId()).isEqualTo(42L);
-        assertThat(user.uuid()).isEqualTo("uuid-abc");
         assertThat(user.email()).isEqualTo("alice@example.com");
         assertThat(user.permissions()).containsExactlyInAnyOrder("CHAT", "METRICS");
 
@@ -62,7 +64,7 @@ class GatewayAuthFilterTest {
     }
 
     @Test
-    void noUserIdHeader_doesNotAuthenticate() throws Exception {
+    void noUserUuidHeader_doesNotAuthenticate() throws Exception {
         var request = new MockHttpServletRequest();
         var response = new MockHttpServletResponse();
 
@@ -75,9 +77,9 @@ class GatewayAuthFilterTest {
     }
 
     @Test
-    void blankUserIdHeader_doesNotAuthenticate() throws Exception {
+    void blankUserUuidHeader_doesNotAuthenticate() throws Exception {
         var request = new MockHttpServletRequest();
-        request.addHeader("X-User-ID", "   ");
+        request.addHeader("X-User-UUID", "   ");
         var response = new MockHttpServletResponse();
 
         gatewayAuthFilter.doFilterInternal(request, response, filterChain);
@@ -87,14 +89,20 @@ class GatewayAuthFilterTest {
     }
 
     @Test
-    void malformedUserIdHeader_treatsAsUnauthenticated() throws Exception {
+    void userNotInLocalTable_setsNullUserIdAndSkipsCache() throws Exception {
         var request = new MockHttpServletRequest();
-        request.addHeader("X-User-ID", "not-a-number");
+        request.addHeader("X-User-UUID", "00000000-0000-0000-0000-000000000099");
+        request.addHeader("X-User-Email", "alice@example.com");
         var response = new MockHttpServletResponse();
 
         gatewayAuthFilter.doFilterInternal(request, response, filterChain);
 
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        var user = (GatewayUser) auth.getPrincipal();
+        assertThat(user.uuid()).isEqualTo("00000000-0000-0000-0000-000000000099");
+        assertThat(user.userId()).isNull();
+
         verify(userCacheService, never()).cacheUser(org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         verify(filterChain).doFilter(request, response);
@@ -103,7 +111,7 @@ class GatewayAuthFilterTest {
     @Test
     void emptyPermissions_yieldsEmptyList() throws Exception {
         var request = new MockHttpServletRequest();
-        request.addHeader("X-User-ID", "7");
+        request.addHeader("X-User-UUID", TEST_UUID);
         request.addHeader("X-User-Email", "bob@example.com");
         var response = new MockHttpServletResponse();
 
@@ -119,7 +127,7 @@ class GatewayAuthFilterTest {
     @Test
     void singlePermission_populatedCorrectly() throws Exception {
         var request = new MockHttpServletRequest();
-        request.addHeader("X-User-ID", "5");
+        request.addHeader("X-User-UUID", TEST_UUID);
         request.addHeader("X-User-Email", "carol@example.com");
         request.addHeader("X-User-Permissions", "CHAT");
         var response = new MockHttpServletResponse();
@@ -145,7 +153,7 @@ class GatewayAuthFilterTest {
 
     @Test
     void gatewayUserHasPermission_returnsTrueForPresentPermission() {
-        var user = new GatewayUser(1L, "uuid", "test@test.com", java.util.List.of("CHAT", "METRICS"));
+        var user = new GatewayUser("uuid", "test@test.com", java.util.List.of("CHAT", "METRICS"), 1L);
         assertThat(user.hasPermission("CHAT")).isTrue();
         assertThat(user.hasPermission("METRICS")).isTrue();
         assertThat(user.hasPermission("PLAY")).isFalse();

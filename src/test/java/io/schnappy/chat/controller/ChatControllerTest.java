@@ -51,7 +51,7 @@ class ChatControllerTest {
 
     @BeforeEach
     void setUp() {
-        user = new GatewayUser(10L, "uuid-abc", "alice@example.com", List.of("CHAT"));
+        user = new GatewayUser("uuid-abc", "alice@example.com", List.of("CHAT"), 10L);
         channel = new Channel();
         channel.setId(1L);
         channel.setName("general");

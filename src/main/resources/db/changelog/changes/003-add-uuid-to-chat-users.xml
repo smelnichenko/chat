@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="003-1" author="chat-service">
+        <comment>Add uuid column to chat_users for Keycloak auth migration</comment>
+        <addColumn tableName="chat_users">
+            <column name="uuid" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="chat_users" indexName="idx_chat_users_uuid" unique="true">
+            <column name="uuid"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

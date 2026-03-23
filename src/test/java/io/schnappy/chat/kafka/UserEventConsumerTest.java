@@ -39,13 +39,13 @@ class UserEventConsumerTest {
     @Test
     void handleUserEvent_nullType_doesNothing() {
         userEventConsumer.handleUserEvent(Map.of());
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     @Test
     void handleUserEvent_unknownType_ignoresQuietly() {
         userEventConsumer.handleUserEvent(Map.of("type", "SOMETHING_UNKNOWN"));
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     // --- USER_REGISTERED ---
@@ -54,7 +54,7 @@ class UserEventConsumerTest {
     void handleUserEvent_userRegistered_cachesUser() {
         userEventConsumer.handleUserEvent(Map.of("type", "USER_REGISTERED", "userId", 42L, "email", "alice@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "alice@example.com", true);
+        verify(userCacheService).cacheUser(42L, null, "alice@example.com", true);
     }
 
     @Test
@@ -66,7 +66,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     @Test
@@ -77,7 +77,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     // --- USER_ENABLED / USER_DISABLED ---
@@ -86,14 +86,14 @@ class UserEventConsumerTest {
     void handleUserEvent_userEnabled_cachesUserAsEnabled() {
         userEventConsumer.handleUserEvent(Map.of("type", "USER_ENABLED", "userId", 42L, "email", "alice@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "alice@example.com", true);
+        verify(userCacheService).cacheUser(42L, null, "alice@example.com", true);
     }
 
     @Test
     void handleUserEvent_userDisabled_cachesUserAsDisabled() {
         userEventConsumer.handleUserEvent(Map.of("type", "USER_DISABLED", "userId", 42L, "email", "alice@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "alice@example.com", false);
+        verify(userCacheService).cacheUser(42L, null, "alice@example.com", false);
     }
 
     @Test
@@ -104,7 +104,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService).cacheUser(42L, "unknown", true);
+        verify(userCacheService).cacheUser(42L, null, "unknown", true);
     }
 
     @Test
@@ -114,7 +114,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     // --- PROFILE_UPDATED ---
@@ -123,7 +123,7 @@ class UserEventConsumerTest {
     void handleUserEvent_profileUpdated_cachesUser() {
         userEventConsumer.handleUserEvent(Map.of("type", "PROFILE_UPDATED", "userId", 42L, "email", "new@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "new@example.com", true);
+        verify(userCacheService).cacheUser(42L, null, "new@example.com", true);
     }
 
     @Test
@@ -134,7 +134,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     // --- ADMIN_GRANTED ---
@@ -235,7 +235,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "userId", 42L, "email", "alice@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "alice@example.com", true);
+        verify(userCacheService).cacheUser(42L, null, "alice@example.com", true);
         verify(systemChannelService).postSystemMessage(eq(5L), contains("alice@example.com"), isNull());
     }
 
@@ -251,7 +251,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService).cacheUser(42L, "unknown", true);
+        verify(userCacheService).cacheUser(42L, null, "unknown", true);
         verify(systemChannelService).postSystemMessage(eq(5L), contains("user #42"), isNull());
     }
 
@@ -293,14 +293,14 @@ class UserEventConsumerTest {
         // Kafka JSON deserialization may produce Integer for small numbers
         userEventConsumer.handleUserEvent(Map.of("type", "USER_REGISTERED", "userId", 42, "email", "alice@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "alice@example.com", true);
+        verify(userCacheService).cacheUser(42L, null, "alice@example.com", true);
     }
 
     @Test
     void handleUserEvent_userIdAsString_parsedToLong() {
         userEventConsumer.handleUserEvent(Map.of("type", "USER_REGISTERED", "userId", "42", "email", "alice@example.com"));
 
-        verify(userCacheService).cacheUser(42L, "alice@example.com", true);
+        verify(userCacheService).cacheUser(42L, null, "alice@example.com", true);
     }
 
     @Test
@@ -312,7 +312,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(anyLong(), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(anyLong(), any(), anyString(), any(Boolean.class));
     }
 
     private static Long eq(Long value) {

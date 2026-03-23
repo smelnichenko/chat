@@ -8,6 +8,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Consumes user.events from the admin/user service to maintain
@@ -49,28 +50,31 @@ public class UserEventConsumer {
     private void handleUserRegistered(Map<String, Object> event) {
         Long userId = toLong(event.get(EVENT_USER_ID));
         String email = (String) event.get(EVENT_EMAIL);
+        UUID uuid = toUuid(event.get("uuid"));
         if (userId == null || email == null) return;
 
-        userCacheService.cacheUser(userId, email, true);
+        userCacheService.cacheUser(userId, uuid, email, true);
         log.info("Cached new user: {} ({})", userId, email);
     }
 
     private void handleUserEnabledChanged(Map<String, Object> event) {
         Long userId = toLong(event.get(EVENT_USER_ID));
         String email = (String) event.get(EVENT_EMAIL);
+        UUID uuid = toUuid(event.get("uuid"));
         boolean enabled = "USER_ENABLED".equals(event.get("type"));
         if (userId == null) return;
 
-        userCacheService.cacheUser(userId, email != null ? email : "unknown", enabled);
+        userCacheService.cacheUser(userId, uuid, email != null ? email : "unknown", enabled);
         log.info("User {} {}", userId, enabled ? "enabled" : "disabled");
     }
 
     private void handleProfileUpdated(Map<String, Object> event) {
         Long userId = toLong(event.get(EVENT_USER_ID));
         String email = (String) event.get(EVENT_EMAIL);
+        UUID uuid = toUuid(event.get("uuid"));
         if (userId == null || email == null) return;
 
-        userCacheService.cacheUser(userId, email, true);
+        userCacheService.cacheUser(userId, uuid, email, true);
     }
 
     private void handleAdminGranted(Map<String, Object> event) {
@@ -108,9 +112,10 @@ public class UserEventConsumer {
     private void handleRegistrationApproved(Map<String, Object> event) {
         Long userId = toLong(event.get(EVENT_USER_ID));
         String email = (String) event.get(EVENT_EMAIL);
+        UUID uuid = toUuid(event.get("uuid"));
         if (userId == null) return;
 
-        userCacheService.cacheUser(userId, email != null ? email : "unknown", true);
+        userCacheService.cacheUser(userId, uuid, email != null ? email : "unknown", true);
 
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
@@ -144,6 +149,17 @@ public class UserEventConsumer {
             try {
                 return Long.parseLong(s);
             } catch (NumberFormatException _) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private UUID toUuid(Object value) {
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                return UUID.fromString(s);
+            } catch (IllegalArgumentException _) {
                 return null;
             }
         }

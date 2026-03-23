@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -29,6 +30,10 @@ public class UserCacheService {
     private final ChatUserRepository chatUserRepository;
 
     public void cacheUser(Long userId, String email, boolean enabled) {
+        cacheUser(userId, null, email, enabled);
+    }
+
+    public void cacheUser(Long userId, UUID uuid, String email, boolean enabled) {
         // Write to PostgreSQL (source of truth)
         var user = chatUserRepository.findById(userId).orElseGet(() -> {
             var u = new ChatUser();
@@ -37,6 +42,9 @@ public class UserCacheService {
         });
         user.setEmail(email);
         user.setEnabled(enabled);
+        if (uuid != null) {
+            user.setUuid(uuid);
+        }
         user.setUpdatedAt(Instant.now());
         chatUserRepository.save(user);
 

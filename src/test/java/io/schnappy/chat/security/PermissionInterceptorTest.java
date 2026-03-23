@@ -58,7 +58,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkClassPermission_userHasPermission_proceeds() throws Throwable {
-        var user = new GatewayUser(1L, "uuid", "test@test.com", List.of("CHAT"));
+        var user = new GatewayUser("uuid", "test@test.com", List.of("CHAT"), 1L);
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);
@@ -75,7 +75,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkClassPermission_userLacksPermission_throwsForbidden() throws Throwable {
-        var user = new GatewayUser(1L, "uuid", "test@test.com", List.of("METRICS"));
+        var user = new GatewayUser("uuid", "test@test.com", List.of("METRICS"), 1L);
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);
@@ -121,7 +121,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkMethodPermission_userHasPermission_proceeds() throws Throwable {
-        var user = new GatewayUser(1L, "uuid", "test@test.com", List.of("CHAT"));
+        var user = new GatewayUser("uuid", "test@test.com", List.of("CHAT"), 1L);
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);
@@ -134,7 +134,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkMethodPermission_userLacksPermission_throwsForbidden() {
-        var user = new GatewayUser(1L, "uuid", "test@test.com", List.of("PLAY"));
+        var user = new GatewayUser("uuid", "test@test.com", List.of("PLAY"), 1L);
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);

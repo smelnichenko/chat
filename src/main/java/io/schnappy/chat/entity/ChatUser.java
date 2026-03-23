@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "chat_users")
@@ -17,6 +18,9 @@ public class ChatUser {
 
     @Id
     private Long id;
+
+    @Column(unique = true)
+    private UUID uuid;
 
     @Column(nullable = false)
     private String email;
