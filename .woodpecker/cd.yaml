@@ -98,7 +98,9 @@ steps:
           --context=.docker-context \
           --destination=git.pmon.dev/schnappy/chat:$GIT_HASH \
           --skip-tls-verify-registry=git.pmon.dev \
-          --build-arg=http_proxy=http://monitor-apt-cache.monitor.svc.cluster.local:3142 \
+          --registry-mirror=nexus.pmon.dev:8082 \
+          --insecure-registry=nexus.pmon.dev:8082 \
+          --build-arg=http_proxy=http://schnappy-apt-cache.schnappy.svc.cluster.local:3142 \
           --cache=true \
           --cache-repo=git.pmon.dev/schnappy/chat/cache
     depends_on: [build-jar]
