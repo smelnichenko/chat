@@ -101,7 +101,7 @@ steps:
           --registry-mirror=nexus.pmon.dev:8082 \
           --insecure-registry=nexus.pmon.dev:8082 \
           --build-arg=http_proxy=http://schnappy-apt-cache.schnappy.svc.cluster.local:3142 \
-          --cache=true \
+          --cache=false \
           --cache-repo=git.pmon.dev/schnappy/chat/cache
     depends_on: [build-jar]
     backend_options:
