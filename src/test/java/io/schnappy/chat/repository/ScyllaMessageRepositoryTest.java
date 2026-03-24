@@ -356,7 +356,7 @@ class ScyllaMessageRepositoryTest {
             when(row.getLong("user_id")).thenReturn(10L);
             when(row.getString("username")).thenReturn("alice");
             when(row.getString("content")).thenReturn("Hello");
-            when(row.getUuid("parent_message_id")).thenReturn(null);
+            when(row.getString("parent_message_id")).thenReturn(null);
             when(row.getBoolean("edited")).thenReturn(false);
             when(row.getString("hash")).thenReturn("hash123");
             when(row.getString("prev_hash")).thenReturn("0");
@@ -393,7 +393,7 @@ class ScyllaMessageRepositoryTest {
             when(row.getLong("user_id")).thenReturn(10L);
             when(row.getString("username")).thenReturn("alice");
             when(row.getString("content")).thenReturn("Original");
-            when(row.getUuid("parent_message_id")).thenReturn(null);
+            when(row.getString("parent_message_id")).thenReturn(null);
             when(row.getBoolean("edited")).thenReturn(true);
             when(row.getString("hash")).thenReturn("hash123");
             when(row.getString("prev_hash")).thenReturn("0");
@@ -436,7 +436,7 @@ class ScyllaMessageRepositoryTest {
             when(row.getLong("user_id")).thenReturn(10L);
             when(row.getString("username")).thenReturn("alice");
             when(row.getString("content")).thenReturn("Reply");
-            when(row.getUuid("parent_message_id")).thenReturn(parentId);
+            when(row.getString("parent_message_id")).thenReturn(parentId.toString());
             when(row.getBoolean("edited")).thenReturn(false);
             when(row.getString("hash")).thenReturn("hash");
             when(row.getString("prev_hash")).thenReturn("prevhash");
@@ -469,7 +469,7 @@ class ScyllaMessageRepositoryTest {
             when(row.getLong("user_id")).thenReturn(10L);
             when(row.getString("username")).thenReturn("alice");
             when(row.getString("content")).thenReturn("Hello");
-            when(row.getUuid("parent_message_id")).thenReturn(null);
+            when(row.getString("parent_message_id")).thenReturn(null);
             when(row.getBoolean("edited")).thenReturn(false);
             when(row.getString("hash")).thenReturn("hash");
             when(row.getString("prev_hash")).thenReturn("0");

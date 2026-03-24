@@ -169,7 +169,7 @@ public class ScyllaMessageRepository {
         for (Row row : rs) {
             if (row.getBoolean(COL_DELETED)) continue;
             UUID msgId = row.getUuid(COL_MESSAGE_ID);
-            UUID parentId = row.getUuid(COL_PARENT_MESSAGE_ID);
+            String parentId = row.getString(COL_PARENT_MESSAGE_ID);
             boolean edited = row.getBoolean(COL_EDITED);
 
             String editedContent = null;
@@ -183,7 +183,7 @@ public class ScyllaMessageRepository {
                 .userId(row.getLong(COL_USER_ID))
                 .username(row.getString(COL_USERNAME))
                 .content(row.getString(COL_CONTENT))
-                .parentMessageId(parentId != null ? parentId.toString() : null)
+                .parentMessageId(parentId)
                 .createdAt(Instant.ofEpochMilli(Uuids.unixTimestamp(msgId)))
                 .hash(row.getString(COL_HASH))
                 .prevHash(row.getString(COL_PREV_HASH))
