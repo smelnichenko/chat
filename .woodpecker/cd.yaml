@@ -67,7 +67,7 @@ steps:
   - name: build-jar
     image: eclipse-temurin:25-jdk
     commands:
-      - ./gradlew bootJar --no-daemon -x test
+      - ./gradlew clean bootJar --no-daemon -x test
       - mkdir -p .docker-context
       - jar=$(ls build/libs/*.jar | grep -v plain | head -1)
       - cp "$jar" .docker-context/app.jar
@@ -101,7 +101,7 @@ steps:
           --registry-mirror=nexus.pmon.dev:8082 \
           --insecure-registry=nexus.pmon.dev:8082 \
           --build-arg=http_proxy=http://schnappy-apt-cache.schnappy.svc.cluster.local:3142 \
-          --cache=false \
+          --cache=true \
           --cache-repo=git.pmon.dev/schnappy/chat/cache
     depends_on: [build-jar]
     backend_options:
