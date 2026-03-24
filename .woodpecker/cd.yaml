@@ -24,7 +24,7 @@ steps:
       SPRING_DATASOURCE_PASSWORD: test
       SPRING_DATA_REDIS_HOST: redis
     commands:
-      - ./gradlew check --no-daemon
+      - ./gradlew clean check --no-daemon
     backend_options:
       kubernetes:
         resources:
