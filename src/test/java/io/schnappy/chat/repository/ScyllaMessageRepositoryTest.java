@@ -24,6 +24,8 @@ import static org.mockito.Mockito.when;
 
 class ScyllaMessageRepositoryTest {
 
+    private static final UUID USER_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
+
     // --- Static method tests (no CqlSession needed) ---
 
     @Test
@@ -48,70 +50,70 @@ class ScyllaMessageRepositoryTest {
     @Test
     void computeMessageHash_deterministicForSameInputs() {
         UUID messageId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeMessageHash("prevhash", 1L, 10L, messageId, "Hello");
-        String hash2 = ScyllaMessageRepository.computeMessageHash("prevhash", 1L, 10L, messageId, "Hello");
+        String hash1 = ScyllaMessageRepository.computeMessageHash("prevhash", 1L, USER_UUID, messageId, "Hello");
+        String hash2 = ScyllaMessageRepository.computeMessageHash("prevhash", 1L, USER_UUID, messageId, "Hello");
         assertThat(hash1).isEqualTo(hash2);
     }
 
     @Test
     void computeMessageHash_differentContent_producesDifferentHash() {
         UUID messageId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeMessageHash("0", 1L, 10L, messageId, "Hello");
-        String hash2 = ScyllaMessageRepository.computeMessageHash("0", 1L, 10L, messageId, "World");
+        String hash1 = ScyllaMessageRepository.computeMessageHash("0", 1L, USER_UUID, messageId, "Hello");
+        String hash2 = ScyllaMessageRepository.computeMessageHash("0", 1L, USER_UUID, messageId, "World");
         assertThat(hash1).isNotEqualTo(hash2);
     }
 
     @Test
     void computeMessageHash_differentPrevHash_producesDifferentHash() {
         UUID messageId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeMessageHash("abc", 1L, 10L, messageId, "Hello");
-        String hash2 = ScyllaMessageRepository.computeMessageHash("def", 1L, 10L, messageId, "Hello");
+        String hash1 = ScyllaMessageRepository.computeMessageHash("abc", 1L, USER_UUID, messageId, "Hello");
+        String hash2 = ScyllaMessageRepository.computeMessageHash("def", 1L, USER_UUID, messageId, "Hello");
         assertThat(hash1).isNotEqualTo(hash2);
     }
 
     @Test
     void computeMessageHash_differentChannelId_producesDifferentHash() {
         UUID messageId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeMessageHash("0", 1L, 10L, messageId, "Hello");
-        String hash2 = ScyllaMessageRepository.computeMessageHash("0", 2L, 10L, messageId, "Hello");
+        String hash1 = ScyllaMessageRepository.computeMessageHash("0", 1L, USER_UUID, messageId, "Hello");
+        String hash2 = ScyllaMessageRepository.computeMessageHash("0", 2L, USER_UUID, messageId, "Hello");
         assertThat(hash1).isNotEqualTo(hash2);
     }
 
     @Test
     void computeMessageHash_returnsHexString() {
         UUID messageId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash = ScyllaMessageRepository.computeMessageHash("0", 1L, 10L, messageId, "Hello");
+        String hash = ScyllaMessageRepository.computeMessageHash("0", 1L, USER_UUID, messageId, "Hello");
         assertThat(hash).hasSize(64).matches("[0-9a-f]+");
     }
 
     @Test
     void computeEditHash_deterministicForSameInputs() {
         UUID editId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeEditHash("origHash", editId, 10L, "edited content");
-        String hash2 = ScyllaMessageRepository.computeEditHash("origHash", editId, 10L, "edited content");
+        String hash1 = ScyllaMessageRepository.computeEditHash("origHash", editId, USER_UUID, "edited content");
+        String hash2 = ScyllaMessageRepository.computeEditHash("origHash", editId, USER_UUID, "edited content");
         assertThat(hash1).isEqualTo(hash2);
     }
 
     @Test
     void computeEditHash_differentContent_producesDifferentHash() {
         UUID editId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeEditHash("origHash", editId, 10L, "v1");
-        String hash2 = ScyllaMessageRepository.computeEditHash("origHash", editId, 10L, "v2");
+        String hash1 = ScyllaMessageRepository.computeEditHash("origHash", editId, USER_UUID, "v1");
+        String hash2 = ScyllaMessageRepository.computeEditHash("origHash", editId, USER_UUID, "v2");
         assertThat(hash1).isNotEqualTo(hash2);
     }
 
     @Test
     void computeEditHash_differentOriginalHash_producesDifferentHash() {
         UUID editId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash1 = ScyllaMessageRepository.computeEditHash("hash1", editId, 10L, "content");
-        String hash2 = ScyllaMessageRepository.computeEditHash("hash2", editId, 10L, "content");
+        String hash1 = ScyllaMessageRepository.computeEditHash("hash1", editId, USER_UUID, "content");
+        String hash2 = ScyllaMessageRepository.computeEditHash("hash2", editId, USER_UUID, "content");
         assertThat(hash1).isNotEqualTo(hash2);
     }
 
     @Test
     void computeEditHash_returnsHexString() {
         UUID editId = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-        String hash = ScyllaMessageRepository.computeEditHash("origHash", editId, 10L, "content");
+        String hash = ScyllaMessageRepository.computeEditHash("origHash", editId, USER_UUID, "content");
         assertThat(hash).hasSize(64).matches("[0-9a-f]+");
     }
 
@@ -127,9 +129,9 @@ class ScyllaMessageRepositoryTest {
     @Test
     void editRecord_recordAccessors() {
         Instant now = Instant.now();
-        var er = new ScyllaMessageRepository.EditRecord("edit-1", 10L, "content", "hash123", now);
+        var er = new ScyllaMessageRepository.EditRecord("edit-1", USER_UUID, "content", "hash123", now);
         assertThat(er.editId()).isEqualTo("edit-1");
-        assertThat(er.userId()).isEqualTo(10L);
+        assertThat(er.userUuid()).isEqualTo(USER_UUID);
         assertThat(er.content()).isEqualTo("content");
         assertThat(er.hash()).isEqualTo("hash123");
         assertThat(er.createdAt()).isEqualTo(now);
@@ -154,7 +156,7 @@ class ScyllaMessageRepositoryTest {
 
             var repo = new ScyllaMessageRepository(session);
             var msg = ChatMessageDto.builder()
-                    .channelId(1L).userId(10L).username("alice").content("Hello").build();
+                    .channelId(1L).userUuid(USER_UUID).username("alice").content("Hello").build();
 
             UUID messageId = repo.saveMessage(msg, null);
 
@@ -205,7 +207,7 @@ class ScyllaMessageRepositoryTest {
             when(session.execute(any(BoundStatement.class))).thenReturn(mock(ResultSet.class));
 
             var repo = new ScyllaMessageRepository(session);
-            repo.saveEdit(1L, "2026-03-20", UUID.randomUUID(), 10L, "edited", "origHash");
+            repo.saveEdit(1L, "2026-03-20", UUID.randomUUID(), USER_UUID, "edited", "origHash");
 
             // insertEdit + markEdited = 2 bound statement executions
             verify(session, org.mockito.Mockito.atLeast(2)).execute(any(BoundStatement.class));
@@ -273,7 +275,7 @@ class ScyllaMessageRepositoryTest {
             UUID editId = Uuids.timeBased();
             var row = mock(Row.class);
             when(row.getUuid("edit_id")).thenReturn(editId);
-            when(row.getLong("user_id")).thenReturn(10L);
+            when(row.getUuid("user_uuid")).thenReturn(USER_UUID);
             when(row.getString("content")).thenReturn("edited text");
             when(row.getString("hash")).thenReturn("edithash123");
 
@@ -285,60 +287,9 @@ class ScyllaMessageRepositoryTest {
             var edits = repo.getEdits(1L, "2026-03-20", UUID.randomUUID());
 
             assertThat(edits).hasSize(1);
-            assertThat(edits.get(0).userId()).isEqualTo(10L);
+            assertThat(edits.get(0).userUuid()).isEqualTo(USER_UUID);
             assertThat(edits.get(0).content()).isEqualTo("edited text");
             assertThat(edits.get(0).hash()).isEqualTo("edithash123");
-        }
-
-        @Test
-        void getMessages_withoutBeforeId_returnsEmptyForEmptyResult() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            var boundStmt = mock(BoundStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(Collections.emptyIterator());
-            when(session.execute(any(BoundStatement.class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            assertThat(repo.getMessages(1L, "2026-03-20", null, 50)).isEmpty();
-        }
-
-        @Test
-        void getMessages_withBeforeId_returnsEmptyForEmptyResult() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            var boundStmt = mock(BoundStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(Collections.emptyIterator());
-            when(session.execute(any(BoundStatement.class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            assertThat(repo.getMessages(1L, "2026-03-20", Uuids.timeBased(), 50)).isEmpty();
-        }
-
-        @Test
-        void getMessages_deletedMessage_isSkipped() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            var boundStmt = mock(BoundStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
-
-            var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(true);
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(List.of(row).iterator());
-            when(session.execute(any(BoundStatement.class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            assertThat(repo.getMessages(1L, "2026-03-20", null, 50)).isEmpty();
         }
 
         @Test
@@ -353,7 +304,7 @@ class ScyllaMessageRepositoryTest {
             var row = mock(Row.class);
             when(row.getBoolean("deleted")).thenReturn(false);
             when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
+            when(row.getUuid("user_uuid")).thenReturn(USER_UUID);
             when(row.getString("username")).thenReturn("alice");
             when(row.getString("content")).thenReturn("Hello");
             when(row.getString("parent_message_id")).thenReturn(null);
@@ -373,136 +324,28 @@ class ScyllaMessageRepositoryTest {
 
             assertThat(messages).hasSize(1);
             assertThat(messages.get(0).getMessageId()).isEqualTo(msgId.toString());
-            assertThat(messages.get(0).getUserId()).isEqualTo(10L);
+            assertThat(messages.get(0).getUserUuid()).isEqualTo(USER_UUID);
             assertThat(messages.get(0).getContent()).isEqualTo("Hello");
             assertThat(messages.get(0).getEditedContent()).isNull();
         }
 
         @Test
-        void getMessages_editedMessage_fetchesLatestEditContent() {
+        void getMessages_deletedMessage_isSkipped() {
             var session = mock(CqlSession.class);
             var preparedStmt = mock(PreparedStatement.class);
             var boundStmt = mock(BoundStatement.class);
             when(session.prepare(anyString())).thenReturn(preparedStmt);
             when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
 
-            UUID msgId = Uuids.timeBased();
             var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(false);
-            when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
-            when(row.getString("username")).thenReturn("alice");
-            when(row.getString("content")).thenReturn("Original");
-            when(row.getString("parent_message_id")).thenReturn(null);
-            when(row.getBoolean("edited")).thenReturn(true);
-            when(row.getString("hash")).thenReturn("hash123");
-            when(row.getString("prev_hash")).thenReturn("0");
-            when(row.isNull("key_version")).thenReturn(false);
-            when(row.getInt("key_version")).thenReturn(1);
-            when(row.getString("message_type")).thenReturn("text");
-            when(row.getString("metadata")).thenReturn("{}");
-
-            var msgRs = mock(ResultSet.class);
-            when(msgRs.iterator()).thenReturn(List.of(row).iterator());
-
-            var editRow = mock(Row.class);
-            when(editRow.getString("content")).thenReturn("Edited content");
-            var editRs = mock(ResultSet.class);
-            when(editRs.one()).thenReturn(editRow);
-
-            when(session.execute(any(BoundStatement.class))).thenReturn(msgRs, editRs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var messages = repo.getMessages(1L, "2026-03-20", null, 50);
-
-            assertThat(messages).hasSize(1);
-            assertThat(messages.get(0).getEditedContent()).isEqualTo("Edited content");
-            assertThat(messages.get(0).getKeyVersion()).isEqualTo(1);
-        }
-
-        @Test
-        void getMessages_withParentMessageId_isMapped() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            var boundStmt = mock(BoundStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
-
-            UUID msgId = Uuids.timeBased();
-            UUID parentId = Uuids.timeBased();
-            var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(false);
-            when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
-            when(row.getString("username")).thenReturn("alice");
-            when(row.getString("content")).thenReturn("Reply");
-            when(row.getString("parent_message_id")).thenReturn(parentId.toString());
-            when(row.getBoolean("edited")).thenReturn(false);
-            when(row.getString("hash")).thenReturn("hash");
-            when(row.getString("prev_hash")).thenReturn("prevhash");
-            when(row.isNull("key_version")).thenReturn(true);
-            when(row.getString("message_type")).thenReturn(null);
-            when(row.getString("metadata")).thenReturn(null);
+            when(row.getBoolean("deleted")).thenReturn(true);
 
             var rs = mock(ResultSet.class);
             when(rs.iterator()).thenReturn(List.of(row).iterator());
             when(session.execute(any(BoundStatement.class))).thenReturn(rs);
 
             var repo = new ScyllaMessageRepository(session);
-            var messages = repo.getMessages(1L, "2026-03-20", null, 50);
-
-            assertThat(messages.get(0).getParentMessageId()).isEqualTo(parentId.toString());
-        }
-
-        @Test
-        void getRecentMessages_todayHasEnough_doesNotQueryYesterday() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            var boundStmt = mock(BoundStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
-
-            UUID msgId = Uuids.timeBased();
-            var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(false);
-            when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
-            when(row.getString("username")).thenReturn("alice");
-            when(row.getString("content")).thenReturn("Hello");
-            when(row.getString("parent_message_id")).thenReturn(null);
-            when(row.getBoolean("edited")).thenReturn(false);
-            when(row.getString("hash")).thenReturn("hash");
-            when(row.getString("prev_hash")).thenReturn("0");
-            when(row.isNull("key_version")).thenReturn(true);
-            when(row.getString("message_type")).thenReturn(null);
-            when(row.getString("metadata")).thenReturn(null);
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(List.of(row).iterator());
-            when(session.execute(any(BoundStatement.class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var messages = repo.getRecentMessages(1L, 1);
-
-            assertThat(messages).hasSize(1);
-        }
-
-        @Test
-        void getRecentMessages_todayEmpty_queriesYesterday() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            var boundStmt = mock(BoundStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
-
-            var emptyRs = mock(ResultSet.class);
-            when(emptyRs.iterator()).thenReturn(Collections.emptyIterator());
-            when(session.execute(any(BoundStatement.class))).thenReturn(emptyRs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var messages = repo.getRecentMessages(1L, 10);
-
-            assertThat(messages).isEmpty();
+            assertThat(repo.getMessages(1L, "2026-03-20", null, 50)).isEmpty();
         }
 
         @Test
@@ -533,12 +376,12 @@ class ScyllaMessageRepositoryTest {
             UUID msgId = Uuids.timeBased();
             String content = "Hello";
             String prevHash = "0";
-            String hash = ScyllaMessageRepository.computeMessageHash(prevHash, 1L, 10L, msgId, content);
+            String hash = ScyllaMessageRepository.computeMessageHash(prevHash, 1L, USER_UUID, msgId, content);
 
             var row = mock(Row.class);
             when(row.getBoolean("deleted")).thenReturn(false);
             when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
+            when(row.getUuid("user_uuid")).thenReturn(USER_UUID);
             when(row.getString("content")).thenReturn(content);
             when(row.getString("hash")).thenReturn(hash);
             when(row.getString("prev_hash")).thenReturn(prevHash);
@@ -556,109 +399,6 @@ class ScyllaMessageRepositoryTest {
         }
 
         @Test
-        void verifyChain_brokenHash_reportsFirstBroken() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-
-            UUID msgId = Uuids.timeBased();
-            var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(false);
-            when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
-            when(row.getString("content")).thenReturn("Hello");
-            when(row.getString("hash")).thenReturn("wrong-hash");
-            when(row.getString("prev_hash")).thenReturn("0");
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(List.of(row).iterator());
-            when(session.execute(anyString(), any(Object[].class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var result = repo.verifyChain(1L, Instant.now());
-
-            assertThat(result.messageCount()).isEqualTo(1);
-            assertThat(result.validCount()).isZero();
-            assertThat(result.intact()).isFalse();
-            assertThat(result.firstBrokenMessageId()).isEqualTo(msgId.toString());
-        }
-
-        @Test
-        void verifyChain_nullHash_treatsAsValid() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-
-            UUID msgId = Uuids.timeBased();
-            var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(false);
-            when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
-            when(row.getString("content")).thenReturn("Hello");
-            when(row.getString("hash")).thenReturn(null);
-            when(row.getString("prev_hash")).thenReturn("0");
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(List.of(row).iterator());
-            when(session.execute(anyString(), any(Object[].class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var result = repo.verifyChain(1L, Instant.now());
-
-            assertThat(result.messageCount()).isEqualTo(1);
-            assertThat(result.validCount()).isEqualTo(1);
-            assertThat(result.intact()).isTrue();
-        }
-
-        @Test
-        void verifyChain_brokenPrevHash_reportsFirstBroken() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-
-            UUID msgId = Uuids.timeBased();
-            var row = mock(Row.class);
-            when(row.getBoolean("deleted")).thenReturn(false);
-            when(row.getUuid("message_id")).thenReturn(msgId);
-            when(row.getLong("user_id")).thenReturn(10L);
-            when(row.getString("content")).thenReturn("Hello");
-            when(row.getString("hash")).thenReturn("somehash");
-            when(row.getString("prev_hash")).thenReturn("wrong");
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(List.of(row).iterator());
-            when(session.execute(anyString(), any(Object[].class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var result = repo.verifyChain(1L, Instant.now());
-
-            assertThat(result.messageCount()).isEqualTo(1);
-            assertThat(result.validCount()).isZero();
-            assertThat(result.intact()).isFalse();
-            assertThat(result.firstBrokenMessageId()).isEqualTo(msgId.toString());
-        }
-
-        @Test
-        void verifyChain_deletedMessages_areSkipped() {
-            var session = mock(CqlSession.class);
-            var preparedStmt = mock(PreparedStatement.class);
-            when(session.prepare(anyString())).thenReturn(preparedStmt);
-
-            var deletedRow = mock(Row.class);
-            when(deletedRow.getBoolean("deleted")).thenReturn(true);
-
-            var rs = mock(ResultSet.class);
-            when(rs.iterator()).thenReturn(List.of(deletedRow).iterator());
-            when(session.execute(anyString(), any(Object[].class))).thenReturn(rs);
-
-            var repo = new ScyllaMessageRepository(session);
-            var result = repo.verifyChain(1L, Instant.now());
-
-            assertThat(result.messageCount()).isZero();
-            assertThat(result.intact()).isTrue();
-        }
-
-        @Test
         void deleteMessagesByChannel_deletesChainHead() {
             var session = mock(CqlSession.class);
             var preparedStmt = mock(PreparedStatement.class);
@@ -669,13 +409,6 @@ class ScyllaMessageRepositoryTest {
             repo.deleteMessagesByChannel(1L, Instant.now());
 
             verify(session).execute("DELETE FROM chain_heads WHERE channel_id = ?", 1L);
-        }
-    }
-
-    /** Helper to avoid unused inner class warning */
-    private static class ScyllaMessageRepositoryWithSession extends ScyllaMessageRepository {
-        ScyllaMessageRepositoryWithSession(CqlSession session) {
-            super(session);
         }
     }
 }

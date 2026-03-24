@@ -5,13 +5,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface ChannelMemberRepository extends JpaRepository<ChannelMember, Long> {
-    List<ChannelMember> findByUserId(Long userId);
+    List<ChannelMember> findByUserUuid(UUID userUuid);
     List<ChannelMember> findByChannelId(Long channelId);
-    Optional<ChannelMember> findByChannelIdAndUserId(Long channelId, Long userId);
+    Optional<ChannelMember> findByChannelIdAndUserUuid(Long channelId, UUID userUuid);
     long countByChannelId(Long channelId);
-    boolean existsByChannelIdAndUserId(Long channelId, Long userId);
-    void deleteByChannelIdAndUserId(Long channelId, Long userId);
+    boolean existsByChannelIdAndUserUuid(Long channelId, UUID userUuid);
+    void deleteByChannelIdAndUserUuid(Long channelId, UUID userUuid);
     void deleteByChannelId(Long channelId);
 }

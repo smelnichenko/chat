@@ -33,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/chat")
@@ -45,13 +46,13 @@ public class ChatController {
 
     @GetMapping("/channels")
     public List<ChannelDto> getChannels(@RequestAttribute("gatewayUser") GatewayUser user) {
-        return chatService.getAllChannelsWithMembership(user.userId());
+        return chatService.getAllChannelsWithMembership(user.uuid());
     }
 
     @PostMapping("/channels")
     public ResponseEntity<ChannelDto> createChannel(@Valid @RequestBody CreateChannelRequest request,
                                                      @RequestAttribute("gatewayUser") GatewayUser user) {
-        var channel = chatService.createChannel(request, user.userId());
+        var channel = chatService.createChannel(request, user.uuid());
         var dto = ChannelDto.builder()
             .id(channel.getId())
             .name(channel.getName())
@@ -68,14 +69,14 @@ public class ChatController {
     @PostMapping("/channels/{channelId}/leave")
     public ResponseEntity<Void> leaveChannel(@PathVariable Long channelId,
                                              @RequestAttribute("gatewayUser") GatewayUser user) {
-        chatService.leaveChannel(channelId, user.userId());
+        chatService.leaveChannel(channelId, user.uuid());
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/channels/{channelId}")
     public ResponseEntity<Void> deleteChannel(@PathVariable Long channelId,
                                               @RequestAttribute("gatewayUser") GatewayUser user) {
-        chatService.deleteChannel(channelId, user.userId());
+        chatService.deleteChannel(channelId, user.uuid());
         return ResponseEntity.noContent().build();
     }
 
@@ -92,7 +93,7 @@ public class ChatController {
                                                        @Valid @RequestBody SendMessageRequest request,
                                                        @RequestAttribute("gatewayUser") GatewayUser user) {
         requireMembership(channelId, user);
-        var message = chatService.sendMessage(channelId, request, user.userId(), user.email());
+        var message = chatService.sendMessage(channelId, request, user.uuid(), user.email());
         return ResponseEntity.status(HttpStatus.CREATED).body(message);
     }
 
@@ -105,31 +106,33 @@ public class ChatController {
 
     @PostMapping("/channels/{channelId}/kick")
     public ResponseEntity<Void> kickUser(@PathVariable Long channelId,
-                                         @RequestBody Map<String, Long> body,
+                                         @RequestBody Map<String, String> body,
                                          @RequestAttribute("gatewayUser") GatewayUser user) {
-        Long userId = body.get("userId");
-        if (userId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userId is required");
+        String userUuidStr = body.get("userUuid");
+        if (userUuidStr == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userUuid is required");
         }
-        chatService.kickFromChannel(channelId, userId, user.userId());
+        UUID targetUuid = UUID.fromString(userUuidStr);
+        chatService.kickFromChannel(channelId, targetUuid, user.uuid());
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/channels/{channelId}/invite")
     public ResponseEntity<Void> inviteUser(@PathVariable Long channelId,
-                                           @RequestBody Map<String, Long> body,
+                                           @RequestBody Map<String, String> body,
                                            @RequestAttribute("gatewayUser") GatewayUser user) {
-        Long userId = body.get("userId");
-        if (userId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userId is required");
+        String userUuidStr = body.get("userUuid");
+        if (userUuidStr == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userUuid is required");
         }
-        chatService.inviteToChannel(channelId, userId, user.userId());
+        UUID targetUuid = UUID.fromString(userUuidStr);
+        chatService.inviteToChannel(channelId, targetUuid, user.uuid());
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/users")
     public List<Map<String, Object>> getUsers(@RequestAttribute("gatewayUser") GatewayUser user) {
-        return chatService.getChatUsers(user.userId());
+        return chatService.getChatUsers(user.uuid());
     }
 
     @PutMapping("/channels/{channelId}/messages/{messageId}")
@@ -138,7 +141,7 @@ public class ChatController {
                                             @Valid @RequestBody EditMessageRequest request,
                                             @RequestAttribute("gatewayUser") GatewayUser user) {
         requireMembership(channelId, user);
-        chatService.editMessage(channelId, messageId, request.content(), user.userId());
+        chatService.editMessage(channelId, messageId, request.content(), user.uuid());
         return ResponseEntity.ok().build();
     }
 
@@ -160,7 +163,7 @@ public class ChatController {
     @PostMapping("/channels/{channelId}/read")
     public ResponseEntity<Void> markAsRead(@PathVariable Long channelId,
                                            @RequestAttribute("gatewayUser") GatewayUser user) {
-        chatService.updateLastRead(channelId, user.userId());
+        chatService.updateLastRead(channelId, user.uuid());
         return ResponseEntity.ok().build();
     }
 
@@ -169,7 +172,7 @@ public class ChatController {
     @GetMapping("/keys")
     public ResponseEntity<UserKeysDto> getKeys(@RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        var keys = chatService.getUserKeys(user.userId());
+        var keys = chatService.getUserKeys(user.uuid());
         if (keys == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(keys);
     }
@@ -178,7 +181,7 @@ public class ChatController {
     public ResponseEntity<UserKeysDto> uploadKeys(@Valid @RequestBody UploadKeysRequest request,
                                                    @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        var keys = chatService.uploadUserKeys(request, user.userId());
+        var keys = chatService.uploadUserKeys(request, user.uuid());
         return ResponseEntity.status(HttpStatus.CREATED).body(keys);
     }
 
@@ -186,14 +189,14 @@ public class ChatController {
     public ResponseEntity<Void> updateKeys(@Valid @RequestBody UploadKeysRequest request,
                                             @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        chatService.updateUserKeys(request, user.userId());
+        chatService.updateUserKeys(request, user.uuid());
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/keys/public")
-    public List<Map<String, Object>> getPublicKeys(@RequestParam List<Long> userIds) {
+    public List<Map<String, Object>> getPublicKeys(@RequestParam List<UUID> userUuids) {
         requireE2e();
-        return chatService.getPublicKeys(userIds);
+        return chatService.getPublicKeys(userUuids);
     }
 
     @GetMapping("/channels/{channelId}/keys")
@@ -203,7 +206,7 @@ public class ChatController {
             @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
         requireMembership(channelId, user);
-        var bundles = chatService.getChannelKeyBundles(channelId, user.userId(), keyVersion);
+        var bundles = chatService.getChannelKeyBundles(channelId, user.uuid(), keyVersion);
         return ResponseEntity.ok(bundles);
     }
 
@@ -212,7 +215,7 @@ public class ChatController {
                                                 @Valid @RequestBody SetChannelKeysRequest request,
                                                 @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        chatService.setChannelKeys(channelId, request, user.userId());
+        chatService.setChannelKeys(channelId, request, user.uuid());
         return ResponseEntity.ok().build();
     }
 
@@ -221,7 +224,7 @@ public class ChatController {
                                                     @Valid @RequestBody SetChannelKeysRequest request,
                                                     @RequestAttribute("gatewayUser") GatewayUser user) {
         requireE2e();
-        int newVersion = chatService.rotateChannelKeys(channelId, request, user.userId());
+        int newVersion = chatService.rotateChannelKeys(channelId, request, user.uuid());
         return ResponseEntity.ok(Map.of("newKeyVersion", newVersion));
     }
 
@@ -232,7 +235,7 @@ public class ChatController {
     }
 
     private void requireMembership(Long channelId, GatewayUser user) {
-        if (!chatService.isMember(channelId, user.userId())) {
+        if (!chatService.isMember(channelId, user.uuid())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member of this channel");
         }
     }

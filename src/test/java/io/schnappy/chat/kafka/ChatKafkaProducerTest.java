@@ -11,6 +11,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.Mockito.verify;
@@ -30,7 +31,7 @@ class ChatKafkaProducerTest {
         var message = ChatMessageDto.builder()
                 .messageId("msg-1")
                 .channelId(42L)
-                .userId(10L)
+                .userUuid(UUID.randomUUID())
                 .username("alice")
                 .content("Hello")
                 .createdAt(Instant.now())
@@ -76,7 +77,6 @@ class ChatKafkaProducerTest {
         // Complete exceptionally to trigger the error callback
         future.completeExceptionally(new RuntimeException("Kafka unavailable"));
 
-        // Verify the send was called — the error is logged, not thrown
         verify(kafkaTemplate).send("chat.messages", "5", message);
     }
 
@@ -93,7 +93,6 @@ class ChatKafkaProducerTest {
 
         chatKafkaProducer.sendMessage(message);
 
-        // Complete successfully
         future.complete(null);
 
         verify(kafkaTemplate).send("chat.messages", "3", message);

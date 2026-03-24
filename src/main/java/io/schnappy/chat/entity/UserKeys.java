@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "user_keys")
@@ -19,8 +20,8 @@ public class UserKeys {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "user_id", nullable = false, unique = true)
-    private Long userId;
+    @Column(name = "user_uuid", nullable = false, unique = true)
+    private UUID userUuid;
 
     @Column(name = "public_key", nullable = false, columnDefinition = "TEXT")
     private String publicKey;

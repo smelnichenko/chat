@@ -26,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,6 +37,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ChatControllerTest {
+
+    private static final UUID USER_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
 
     @Mock
     private ChatService chatService;
@@ -51,11 +54,11 @@ class ChatControllerTest {
 
     @BeforeEach
     void setUp() {
-        user = new GatewayUser("uuid-abc", "alice@example.com", List.of("CHAT"), 10L);
+        user = new GatewayUser(USER_UUID, "alice@example.com", List.of("CHAT"));
         channel = new Channel();
         channel.setId(1L);
         channel.setName("general");
-        channel.setCreatedBy(10L);
+        channel.setCreatedByUuid(USER_UUID);
     }
 
     // --- getChannels ---
@@ -63,7 +66,7 @@ class ChatControllerTest {
     @Test
     void getChannels_returnsChannelDtos() {
         var dto = ChannelDto.builder().id(1L).name("general").memberCount(1).joined(true).isOwner(true).build();
-        when(chatService.getAllChannelsWithMembership(10L)).thenReturn(List.of(dto));
+        when(chatService.getAllChannelsWithMembership(USER_UUID)).thenReturn(List.of(dto));
 
         var result = chatController.getChannels(user);
 
@@ -75,8 +78,7 @@ class ChatControllerTest {
 
     @Test
     void createChannel_returnsCreatedWithChannelDto() {
-        channel.setCreatedBy(10L);
-        when(chatService.createChannel(any(CreateChannelRequest.class), eq(10L))).thenReturn(channel);
+        when(chatService.createChannel(any(CreateChannelRequest.class), eq(USER_UUID))).thenReturn(channel);
 
         var request = new CreateChannelRequest("general", false);
         var response = chatController.createChannel(request, user);
@@ -94,7 +96,7 @@ class ChatControllerTest {
     void leaveChannel_returns200() {
         var response = chatController.leaveChannel(1L, user);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).leaveChannel(1L, 10L);
+        verify(chatService).leaveChannel(1L, USER_UUID);
     }
 
     // --- deleteChannel ---
@@ -103,15 +105,15 @@ class ChatControllerTest {
     void deleteChannel_returns204() {
         var response = chatController.deleteChannel(1L, user);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        verify(chatService).deleteChannel(1L, 10L);
+        verify(chatService).deleteChannel(1L, USER_UUID);
     }
 
     // --- getMessages ---
 
     @Test
     void getMessages_memberCanFetch() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
-        var msg = new ChatMessageDto("id1", 1L, 10L, "alice", "Hello", null, Instant.now(), null, null, null, null, null, null);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
+        var msg = new ChatMessageDto("id1", 1L, USER_UUID, "alice", "Hello", null, Instant.now(), null, null, null, null, null, null);
         when(chatService.getMessages(1L, 50)).thenReturn(List.of(msg));
 
         var result = chatController.getMessages(1L, 50, user);
@@ -122,7 +124,7 @@ class ChatControllerTest {
 
     @Test
     void getMessages_limitCappedAt100() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
         when(chatService.getMessages(1L, 100)).thenReturn(List.of());
 
         chatController.getMessages(1L, 999, user);
@@ -132,7 +134,7 @@ class ChatControllerTest {
 
     @Test
     void getMessages_notMember_throwsForbidden() {
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         assertThatThrownBy(() -> chatController.getMessages(1L, 50, user))
                 .isInstanceOf(ResponseStatusException.class)
@@ -144,15 +146,15 @@ class ChatControllerTest {
 
     @Test
     void sendMessage_memberCanSend_returnsCreated() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
         var msg = ChatMessageDto.builder()
                 .messageId("uuid-1")
                 .channelId(1L)
-                .userId(10L)
+                .userUuid(USER_UUID)
                 .content("Hello")
                 .createdAt(Instant.now())
                 .build();
-        when(chatService.sendMessage(eq(1L), any(SendMessageRequest.class), eq(10L), eq("alice@example.com")))
+        when(chatService.sendMessage(eq(1L), any(SendMessageRequest.class), eq(USER_UUID), eq("alice@example.com")))
                 .thenReturn(msg);
 
         var request = new SendMessageRequest("Hello", null, null);
@@ -165,7 +167,7 @@ class ChatControllerTest {
 
     @Test
     void sendMessage_notMember_throwsForbidden() {
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         var request = new SendMessageRequest("Hello", null, null);
         assertThatThrownBy(() -> chatController.sendMessage(1L, request, user))
@@ -178,9 +180,9 @@ class ChatControllerTest {
 
     @Test
     void getMembers_memberCanView() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
         when(chatService.getChannelMembers(1L))
-                .thenReturn(List.of(Map.of("id", 10L, "email", "alice@example.com", "joinedAt", "2025-01-01T00:00:00Z")));
+                .thenReturn(List.of(Map.of("id", USER_UUID.toString(), "email", "alice@example.com", "joinedAt", "2025-01-01T00:00:00Z")));
 
         var result = chatController.getMembers(1L, user);
 
@@ -190,7 +192,7 @@ class ChatControllerTest {
 
     @Test
     void getMembers_notMember_throwsForbidden() {
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         assertThatThrownBy(() -> chatController.getMembers(1L, user))
                 .isInstanceOf(ResponseStatusException.class)
@@ -202,13 +204,14 @@ class ChatControllerTest {
 
     @Test
     void kickUser_validBody_delegates() {
-        var response = chatController.kickUser(1L, Map.of("userId", 20L), user);
+        UUID targetUuid = UUID.randomUUID();
+        var response = chatController.kickUser(1L, Map.of("userUuid", targetUuid.toString()), user);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).kickFromChannel(1L, 20L, 10L);
+        verify(chatService).kickFromChannel(1L, targetUuid, USER_UUID);
     }
 
     @Test
-    void kickUser_missingUserId_throwsBadRequest() {
+    void kickUser_missingUserUuid_throwsBadRequest() {
         var thrown = org.assertj.core.api.Assertions.catchThrowableOfType(
                 ResponseStatusException.class, () -> chatController.kickUser(1L, Map.of(), user));
         assertThat(thrown.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -218,13 +221,14 @@ class ChatControllerTest {
 
     @Test
     void inviteUser_validBody_delegates() {
-        var response = chatController.inviteUser(1L, Map.of("userId", 20L), user);
+        UUID targetUuid = UUID.randomUUID();
+        var response = chatController.inviteUser(1L, Map.of("userUuid", targetUuid.toString()), user);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).inviteToChannel(1L, 20L, 10L);
+        verify(chatService).inviteToChannel(1L, targetUuid, USER_UUID);
     }
 
     @Test
-    void inviteUser_missingUserId_throwsBadRequest() {
+    void inviteUser_missingUserUuid_throwsBadRequest() {
         var thrown = org.assertj.core.api.Assertions.catchThrowableOfType(
                 ResponseStatusException.class, () -> chatController.inviteUser(1L, Map.of(), user));
         assertThat(thrown.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -236,7 +240,7 @@ class ChatControllerTest {
     void markAsRead_delegates() {
         var response = chatController.markAsRead(1L, user);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).updateLastRead(1L, 10L);
+        verify(chatService).updateLastRead(1L, USER_UUID);
     }
 
     // --- E2E disabled ---
@@ -256,7 +260,7 @@ class ChatControllerTest {
         when(chatProperties.e2eEnabled()).thenReturn(false);
 
         var thrown = org.assertj.core.api.Assertions.catchThrowableOfType(
-                ResponseStatusException.class, () -> chatController.getPublicKeys(List.of(1L, 2L)));
+                ResponseStatusException.class, () -> chatController.getPublicKeys(List.of(UUID.randomUUID())));
         assertThat(thrown.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
@@ -265,9 +269,9 @@ class ChatControllerTest {
     @Test
     void getKeys_e2eEnabled_keysFound_returnsOk() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        var keysDto = io.schnappy.chat.dto.UserKeysDto.builder()
+        var keysDto = UserKeysDto.builder()
                 .publicKey("pubkey").encryptedPrivateKey("encpriv").pbkdf2Salt("salt").pbkdf2Iterations(600000).keyVersion(1).build();
-        when(chatService.getUserKeys(10L)).thenReturn(keysDto);
+        when(chatService.getUserKeys(USER_UUID)).thenReturn(keysDto);
 
         var response = chatController.getKeys(user);
 
@@ -279,7 +283,7 @@ class ChatControllerTest {
     @Test
     void getKeys_e2eEnabled_keysNotFound_returnsNotFound() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        when(chatService.getUserKeys(10L)).thenReturn(null);
+        when(chatService.getUserKeys(USER_UUID)).thenReturn(null);
 
         var response = chatController.getKeys(user);
 
@@ -291,9 +295,9 @@ class ChatControllerTest {
     @Test
     void rotateChannelKeys_e2eEnabled_returnsNewVersion() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        when(chatService.rotateChannelKeys(eq(1L), any(), eq(10L))).thenReturn(3);
+        when(chatService.rotateChannelKeys(eq(1L), any(), eq(USER_UUID))).thenReturn(3);
 
-        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(USER_UUID, "enckey", "wrappub");
         var request = new SetChannelKeysRequest(List.of(bundle));
         var response = chatController.rotateChannelKeys(1L, request, user);
 
@@ -305,8 +309,9 @@ class ChatControllerTest {
 
     @Test
     void getUsers_delegatesToService() {
-        when(chatService.getChatUsers(10L))
-                .thenReturn(List.of(Map.of("id", 20L, "email", "bob@example.com")));
+        UUID otherUuid = UUID.randomUUID();
+        when(chatService.getChatUsers(USER_UUID))
+                .thenReturn(List.of(Map.of("id", otherUuid.toString(), "email", "bob@example.com")));
 
         var result = chatController.getUsers(user);
 
@@ -318,18 +323,18 @@ class ChatControllerTest {
 
     @Test
     void editMessage_memberCanEdit_returnsOk() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
 
         var request = new EditMessageRequest("Updated content");
         var response = chatController.editMessage(1L, "msg-uuid", request, user);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).editMessage(1L, "msg-uuid", "Updated content", 10L);
+        verify(chatService).editMessage(1L, "msg-uuid", "Updated content", USER_UUID);
     }
 
     @Test
     void editMessage_notMember_throwsForbidden() {
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         var request = new EditMessageRequest("Updated");
         assertThatThrownBy(() -> chatController.editMessage(1L, "msg-uuid", request, user))
@@ -342,8 +347,8 @@ class ChatControllerTest {
 
     @Test
     void getMessageEdits_memberCanView() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
-        var edit = new ScyllaMessageRepository.EditRecord("edit-1", 10L, "v2", "hash", java.time.Instant.now());
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
+        var edit = new ScyllaMessageRepository.EditRecord("edit-1", USER_UUID, "v2", "hash", Instant.now());
         when(chatService.getMessageEdits(1L, "msg-uuid")).thenReturn(List.of(edit));
 
         var result = chatController.getMessageEdits(1L, "msg-uuid", user);
@@ -354,7 +359,7 @@ class ChatControllerTest {
 
     @Test
     void getMessageEdits_notMember_throwsForbidden() {
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         assertThatThrownBy(() -> chatController.getMessageEdits(1L, "msg-uuid", user))
                 .isInstanceOf(ResponseStatusException.class)
@@ -366,7 +371,7 @@ class ChatControllerTest {
 
     @Test
     void verifyChain_memberCanVerify() {
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
         var verification = new ScyllaMessageRepository.ChainVerification(5, 5, true, null);
         when(chatService.verifyChain(1L)).thenReturn(verification);
 
@@ -378,7 +383,7 @@ class ChatControllerTest {
 
     @Test
     void verifyChain_notMember_throwsForbidden() {
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         assertThatThrownBy(() -> chatController.verifyChain(1L, user))
                 .isInstanceOf(ResponseStatusException.class)
@@ -394,7 +399,7 @@ class ChatControllerTest {
         var keysDto = UserKeysDto.builder()
                 .publicKey("pubkey").encryptedPrivateKey("encpriv")
                 .pbkdf2Salt("salt123456789012345678").pbkdf2Iterations(600000).keyVersion(1).build();
-        when(chatService.uploadUserKeys(any(UploadKeysRequest.class), eq(10L))).thenReturn(keysDto);
+        when(chatService.uploadUserKeys(any(UploadKeysRequest.class), eq(USER_UUID))).thenReturn(keysDto);
 
         var request = new UploadKeysRequest("pubkey", "encpriv", "salt123456789012345678", 600000);
         var response = chatController.uploadKeys(request, user);
@@ -425,7 +430,7 @@ class ChatControllerTest {
         var response = chatController.updateKeys(request, user);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).updateUserKeys(any(UploadKeysRequest.class), eq(10L));
+        verify(chatService).updateUserKeys(any(UploadKeysRequest.class), eq(USER_UUID));
     }
 
     @Test
@@ -444,10 +449,12 @@ class ChatControllerTest {
     @Test
     void getPublicKeys_e2eEnabled_returnsResults() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        when(chatService.getPublicKeys(List.of(10L, 20L)))
-                .thenReturn(List.of(Map.of("userId", 10L, "publicKey", "pk10", "keyVersion", 1)));
+        UUID uuid1 = UUID.randomUUID();
+        UUID uuid2 = UUID.randomUUID();
+        when(chatService.getPublicKeys(List.of(uuid1, uuid2)))
+                .thenReturn(List.of(Map.of("userUuid", uuid1.toString(), "publicKey", "pk10", "keyVersion", 1)));
 
-        var result = chatController.getPublicKeys(List.of(10L, 20L));
+        var result = chatController.getPublicKeys(List.of(uuid1, uuid2));
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0)).containsEntry("publicKey", "pk10");
@@ -458,10 +465,10 @@ class ChatControllerTest {
     @Test
     void getChannelKeys_e2eEnabled_memberCanFetch() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
         var bundleDto = ChannelKeyBundleDto.builder()
-                .userId(10L).keyVersion(1).encryptedChannelKey("enckey").wrapperPublicKey("wrappub").build();
-        when(chatService.getChannelKeyBundles(1L, 10L, null)).thenReturn(List.of(bundleDto));
+                .userUuid(USER_UUID).keyVersion(1).encryptedChannelKey("enckey").wrapperPublicKey("wrappub").build();
+        when(chatService.getChannelKeyBundles(1L, USER_UUID, null)).thenReturn(List.of(bundleDto));
 
         var response = chatController.getChannelKeys(1L, null, user);
 
@@ -473,19 +480,19 @@ class ChatControllerTest {
     @Test
     void getChannelKeys_e2eEnabled_withKeyVersion() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
-        when(chatService.getChannelKeyBundles(1L, 10L, 2)).thenReturn(List.of());
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
+        when(chatService.getChannelKeyBundles(1L, USER_UUID, 2)).thenReturn(List.of());
 
         var response = chatController.getChannelKeys(1L, 2, user);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).getChannelKeyBundles(1L, 10L, 2);
+        verify(chatService).getChannelKeyBundles(1L, USER_UUID, 2);
     }
 
     @Test
     void getChannelKeys_notMember_throwsForbidden() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         assertThatThrownBy(() -> chatController.getChannelKeys(1L, null, user))
                 .isInstanceOf(ResponseStatusException.class)
@@ -509,19 +516,19 @@ class ChatControllerTest {
     void setChannelKeys_e2eEnabled_returnsOk() {
         when(chatProperties.e2eEnabled()).thenReturn(true);
 
-        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(USER_UUID, "enckey", "wrappub");
         var request = new SetChannelKeysRequest(List.of(bundle));
         var response = chatController.setChannelKeys(1L, request, user);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(chatService).setChannelKeys(1L, request, 10L);
+        verify(chatService).setChannelKeys(1L, request, USER_UUID);
     }
 
     @Test
     void setChannelKeys_e2eDisabled_throwsNotFound() {
         when(chatProperties.e2eEnabled()).thenReturn(false);
 
-        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(USER_UUID, "enckey", "wrappub");
         var request = new SetChannelKeysRequest(List.of(bundle));
         assertThatThrownBy(() -> chatController.setChannelKeys(1L, request, user))
                 .isInstanceOf(ResponseStatusException.class)
@@ -535,7 +542,7 @@ class ChatControllerTest {
     void rotateChannelKeys_e2eDisabled_throwsNotFound() {
         when(chatProperties.e2eEnabled()).thenReturn(false);
 
-        var bundle = new SetChannelKeysRequest.MemberKeyBundle(10L, "enckey", "wrappub");
+        var bundle = new SetChannelKeysRequest.MemberKeyBundle(USER_UUID, "enckey", "wrappub");
         var request = new SetChannelKeysRequest(List.of(bundle));
         assertThatThrownBy(() -> chatController.rotateChannelKeys(1L, request, user))
                 .isInstanceOf(ResponseStatusException.class)

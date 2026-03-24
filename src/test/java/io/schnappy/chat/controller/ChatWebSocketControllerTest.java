@@ -11,6 +11,7 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -22,6 +23,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ChatWebSocketControllerTest {
+
+    private static final UUID USER_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
 
     @Mock
     private ChatService chatService;
@@ -37,46 +40,46 @@ class ChatWebSocketControllerTest {
     @Test
     void sendMessage_validPayload_delegatesToChatService() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
 
         Map<String, Object> payload = Map.of("channelId", 1L, "content", "Hello");
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService).sendMessage(eq(1L), any(SendMessageRequest.class), eq(10L), eq("alice@example.com"));
+        verify(chatService).sendMessage(eq(1L), any(SendMessageRequest.class), eq(USER_UUID), eq("alice@example.com"));
     }
 
     @Test
     void sendMessage_withParentMessageId_includesItInRequest() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
 
         Map<String, Object> payload = Map.of("channelId", 1L, "content", "Reply", "parentMessageId", "parent-uuid");
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService).sendMessage(eq(1L), any(SendMessageRequest.class), eq(10L), eq("alice@example.com"));
+        verify(chatService).sendMessage(eq(1L), any(SendMessageRequest.class), eq(USER_UUID), eq("alice@example.com"));
     }
 
     @Test
     void sendMessage_withKeyVersion_includesItInRequest() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
 
         Map<String, Object> payload = Map.of("channelId", 1L, "content", "Encrypted", "keyVersion", 2);
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService).sendMessage(eq(1L), any(SendMessageRequest.class), eq(10L), eq("alice@example.com"));
+        verify(chatService).sendMessage(eq(1L), any(SendMessageRequest.class), eq(USER_UUID), eq("alice@example.com"));
     }
 
     @Test
@@ -85,24 +88,24 @@ class ChatWebSocketControllerTest {
 
         controller.sendMessage(Map.of("channelId", 1L, "content", "Hello"), headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     @Test
-    void sendMessage_nullUserId_doesNothing() {
+    void sendMessage_nullUserUuid_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        // no userId
+        // no userUuid
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
         controller.sendMessage(Map.of("channelId", 1L, "content", "Hello"), headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     @Test
     void sendMessage_nullChannelId_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
@@ -112,13 +115,13 @@ class ChatWebSocketControllerTest {
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     @Test
     void sendMessage_nullContent_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
@@ -128,13 +131,13 @@ class ChatWebSocketControllerTest {
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     @Test
     void sendMessage_blankContent_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
@@ -142,13 +145,13 @@ class ChatWebSocketControllerTest {
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     @Test
     void sendMessage_contentTooLong_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
@@ -157,22 +160,22 @@ class ChatWebSocketControllerTest {
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     @Test
     void sendMessage_notMember_doesNotSend() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         attrs.put("username", "alice@example.com");
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         Map<String, Object> payload = Map.of("channelId", 1L, "content", "Hello");
 
         controller.sendMessage(payload, headerAccessor);
 
-        verify(chatService, never()).sendMessage(anyLong(), any(), anyLong(), anyString());
+        verify(chatService, never()).sendMessage(anyLong(), any(), any(UUID.class), anyString());
     }
 
     // --- markAsRead ---
@@ -180,14 +183,14 @@ class ChatWebSocketControllerTest {
     @Test
     void markAsRead_validPayload_delegatesToChatService() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
         Map<String, Object> payload = Map.of("channelId", 5L);
 
         controller.markAsRead(payload, headerAccessor);
 
-        verify(chatService).updateLastRead(5L, 10L);
+        verify(chatService).updateLastRead(5L, USER_UUID);
     }
 
     @Test
@@ -196,23 +199,23 @@ class ChatWebSocketControllerTest {
 
         controller.markAsRead(Map.of("channelId", 5L), headerAccessor);
 
-        verify(chatService, never()).updateLastRead(anyLong(), anyLong());
+        verify(chatService, never()).updateLastRead(anyLong(), any(UUID.class));
     }
 
     @Test
-    void markAsRead_nullUserId_doesNothing() {
+    void markAsRead_nullUserUuid_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
         controller.markAsRead(Map.of("channelId", 5L), headerAccessor);
 
-        verify(chatService, never()).updateLastRead(anyLong(), anyLong());
+        verify(chatService, never()).updateLastRead(anyLong(), any(UUID.class));
     }
 
     @Test
     void markAsRead_nullChannelId_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
         when(headerAccessor.getSessionAttributes()).thenReturn(attrs);
 
         Map<String, Object> payload = new HashMap<>();
@@ -220,6 +223,6 @@ class ChatWebSocketControllerTest {
 
         controller.markAsRead(payload, headerAccessor);
 
-        verify(chatService, never()).updateLastRead(anyLong(), anyLong());
+        verify(chatService, never()).updateLastRead(anyLong(), any(UUID.class));
     }
 }

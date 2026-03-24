@@ -31,8 +31,8 @@ public class Channel {
     private String name;
 
     @JsonIgnore
-    @Column(name = "created_by", nullable = false)
-    private Long createdBy;
+    @Column(name = "created_by_uuid", nullable = false)
+    private UUID createdByUuid;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();

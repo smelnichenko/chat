@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ==================== channel_members: user_id bigint → user_uuid uuid ==================== -->
+
+    <changeSet id="004-1" author="chat-service">
+        <comment>Add user_uuid column to channel_members</comment>
+        <addColumn tableName="channel_members">
+            <column name="user_uuid" type="uuid"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="004-2" author="chat-service">
+        <comment>Populate channel_members.user_uuid from chat_users</comment>
+        <sql>UPDATE channel_members SET user_uuid = (SELECT uuid FROM chat_users WHERE chat_users.id = channel_members.user_id)</sql>
+    </changeSet>
+
+    <changeSet id="004-3" author="chat-service">
+        <comment>Make channel_members.user_uuid NOT NULL, drop old column and constraints</comment>
+        <dropUniqueConstraint tableName="channel_members" constraintName="uq_channel_members"/>
+        <dropIndex tableName="channel_members" indexName="idx_channel_members_user"/>
+        <addNotNullConstraint tableName="channel_members" columnName="user_uuid" columnDataType="uuid"/>
+        <dropColumn tableName="channel_members" columnName="user_id"/>
+        <addUniqueConstraint tableName="channel_members" columnNames="channel_id, user_uuid" constraintName="uq_channel_members"/>
+        <createIndex tableName="channel_members" indexName="idx_channel_members_user_uuid">
+            <column name="user_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ==================== channel_key_bundles: user_id bigint → user_uuid uuid ==================== -->
+
+    <changeSet id="004-4" author="chat-service">
+        <comment>Add user_uuid column to channel_key_bundles</comment>
+        <addColumn tableName="channel_key_bundles">
+            <column name="user_uuid" type="uuid"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="004-5" author="chat-service">
+        <comment>Populate channel_key_bundles.user_uuid from chat_users</comment>
+        <sql>UPDATE channel_key_bundles SET user_uuid = (SELECT uuid FROM chat_users WHERE chat_users.id = channel_key_bundles.user_id)</sql>
+    </changeSet>
+
+    <changeSet id="004-6" author="chat-service">
+        <comment>Make channel_key_bundles.user_uuid NOT NULL, drop old column and constraints</comment>
+        <dropUniqueConstraint tableName="channel_key_bundles" constraintName="uq_channel_key_bundle"/>
+        <addNotNullConstraint tableName="channel_key_bundles" columnName="user_uuid" columnDataType="uuid"/>
+        <dropColumn tableName="channel_key_bundles" columnName="user_id"/>
+        <addUniqueConstraint tableName="channel_key_bundles" columnNames="channel_id, user_uuid, key_version" constraintName="uq_channel_key_bundle"/>
+    </changeSet>
+
+    <!-- ==================== user_keys: user_id bigint → user_uuid uuid ==================== -->
+
+    <changeSet id="004-7" author="chat-service">
+        <comment>Add user_uuid column to user_keys</comment>
+        <addColumn tableName="user_keys">
+            <column name="user_uuid" type="uuid"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="004-8" author="chat-service">
+        <comment>Populate user_keys.user_uuid from chat_users</comment>
+        <sql>UPDATE user_keys SET user_uuid = (SELECT uuid FROM chat_users WHERE chat_users.id = user_keys.user_id)</sql>
+    </changeSet>
+
+    <changeSet id="004-9" author="chat-service">
+        <comment>Make user_keys.user_uuid NOT NULL and unique, drop old column</comment>
+        <addNotNullConstraint tableName="user_keys" columnName="user_uuid" columnDataType="uuid"/>
+        <dropColumn tableName="user_keys" columnName="user_id"/>
+        <addUniqueConstraint tableName="user_keys" columnNames="user_uuid" constraintName="uq_user_keys_user_uuid"/>
+    </changeSet>
+
+    <!-- ==================== channels: created_by bigint → created_by_uuid uuid ==================== -->
+
+    <changeSet id="004-10" author="chat-service">
+        <comment>Add created_by_uuid column to channels</comment>
+        <addColumn tableName="channels">
+            <column name="created_by_uuid" type="uuid"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="004-11" author="chat-service">
+        <comment>Populate channels.created_by_uuid from chat_users</comment>
+        <sql>UPDATE channels SET created_by_uuid = (SELECT uuid FROM chat_users WHERE chat_users.id = channels.created_by)</sql>
+    </changeSet>
+
+    <changeSet id="004-12" author="chat-service">
+        <comment>Make channels.created_by_uuid NOT NULL, drop old column</comment>
+        <addNotNullConstraint tableName="channels" columnName="created_by_uuid" columnDataType="uuid"/>
+        <dropColumn tableName="channels" columnName="created_by"/>
+    </changeSet>
+
+</databaseChangeLog>

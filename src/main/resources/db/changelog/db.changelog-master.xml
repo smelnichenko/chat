@@ -8,5 +8,6 @@
     <include file="changes/001-create-chat-tables.xml" relativeToChangelogFile="true"/>
     <include file="changes/002-create-chat-users-table.xml" relativeToChangelogFile="true"/>
     <include file="changes/003-add-uuid-to-chat-users.xml" relativeToChangelogFile="true"/>
+    <include file="changes/004-migrate-user-id-to-uuid.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

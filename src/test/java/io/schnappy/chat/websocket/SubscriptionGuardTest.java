@@ -15,6 +15,7 @@ import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
@@ -23,6 +24,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SubscriptionGuardTest {
+
+    private static final UUID USER_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
 
     @Mock
     private ChatService chatService;
@@ -42,24 +45,24 @@ class SubscriptionGuardTest {
     @Test
     void onSubscribe_memberOfChannel_allowed() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
 
-        when(chatService.isMember(1L, 10L)).thenReturn(true);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(true);
 
         var event = createSubscribeEvent("/topic/channel.1", attrs);
 
         // Should not throw
         subscriptionGuard.onSubscribe(event);
 
-        verify(chatService).isMember(1L, 10L);
+        verify(chatService).isMember(1L, USER_UUID);
     }
 
     @Test
     void onSubscribe_notMemberOfChannel_throws() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
 
-        when(chatService.isMember(1L, 10L)).thenReturn(false);
+        when(chatService.isMember(1L, USER_UUID)).thenReturn(false);
 
         var event = createSubscribeEvent("/topic/channel.1", attrs);
 
@@ -69,9 +72,9 @@ class SubscriptionGuardTest {
     }
 
     @Test
-    void onSubscribe_nullUserId_throws() {
+    void onSubscribe_nullUserUuid_throws() {
         Map<String, Object> attrs = new HashMap<>();
-        // No userId in attrs
+        // No userUuid in attrs
 
         var event = createSubscribeEvent("/topic/channel.1", attrs);
 
@@ -104,13 +107,13 @@ class SubscriptionGuardTest {
         subscriptionGuard.onSubscribe(event);
 
         verify(chatService, never()).isMember(org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong());
+                org.mockito.ArgumentMatchers.any(UUID.class));
     }
 
     @Test
     void onSubscribe_nonChannelDestination_doesNothing() {
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("userId", 10L);
+        attrs.put("userUuid", USER_UUID);
 
         var event = createSubscribeEvent("/topic/other-topic", attrs);
 
@@ -118,6 +121,6 @@ class SubscriptionGuardTest {
         subscriptionGuard.onSubscribe(event);
 
         verify(chatService, never()).isMember(org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong());
+                org.mockito.ArgumentMatchers.any(UUID.class));
     }
 }

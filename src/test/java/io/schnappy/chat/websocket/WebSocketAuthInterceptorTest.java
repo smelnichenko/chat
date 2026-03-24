@@ -1,6 +1,5 @@
 package io.schnappy.chat.websocket;
 
-import io.schnappy.chat.security.UserIdResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -20,8 +19,7 @@ class WebSocketAuthInterceptorTest {
 
     private static final String TEST_UUID = "550e8400-e29b-41d4-a716-446655440000";
 
-    private final UserIdResolver resolver = uuid -> TEST_UUID.equals(uuid) ? 42L : null;
-    private final WebSocketAuthInterceptor interceptor = new WebSocketAuthInterceptor(resolver);
+    private final WebSocketAuthInterceptor interceptor = new WebSocketAuthInterceptor();
 
     @Test
     void beforeHandshake_validHeaders_populatesAttributesAndReturnsTrue() {
@@ -37,28 +35,8 @@ class WebSocketAuthInterceptorTest {
 
         assertThat(result).isTrue();
         assertThat(attributes)
-                .containsEntry("userId", 42L)
                 .containsEntry("userUuid", UUID.fromString(TEST_UUID))
                 .containsEntry("username", "alice@example.com");
-    }
-
-    @Test
-    void beforeHandshake_userNotInTable_setsUuidButNoUserId() {
-        var httpRequest = new MockHttpServletRequest();
-        httpRequest.addHeader("X-User-UUID", "00000000-0000-0000-0000-000000000099");
-        httpRequest.addHeader("X-User-Email", "alice@example.com");
-
-        var request = new ServletServerHttpRequest(httpRequest);
-        Map<String, Object> attributes = new HashMap<>();
-
-        boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class),
-                mock(WebSocketHandler.class), attributes);
-
-        assertThat(result).isTrue();
-        assertThat(attributes)
-                .containsEntry("userUuid", UUID.fromString("00000000-0000-0000-0000-000000000099"))
-                .containsEntry("username", "alice@example.com")
-                .doesNotContainKey("userId");
     }
 
     @Test

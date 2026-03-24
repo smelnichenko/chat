@@ -6,10 +6,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "channel_key_bundles",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"channel_id", "user_id", "key_version"}))
+    uniqueConstraints = @UniqueConstraint(columnNames = {"channel_id", "user_uuid", "key_version"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,8 +22,8 @@ public class ChannelKeyBundle {
     @Column(name = "channel_id", nullable = false)
     private Long channelId;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @Column(name = "user_uuid", nullable = false)
+    private UUID userUuid;
 
     @Column(name = "key_version", nullable = false)
     private int keyVersion = 1;

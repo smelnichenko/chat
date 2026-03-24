@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,6 +26,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SystemChannelServiceTest {
+
+    private static final UUID ADMIN_UUID_1 = UUID.fromString("550e8400-e29b-41d4-a716-446655440001");
+    private static final UUID ADMIN_UUID_2 = UUID.fromString("550e8400-e29b-41d4-a716-446655440002");
 
     @Mock
     private ChannelRepository channelRepository;
@@ -63,13 +67,13 @@ class SystemChannelServiceTest {
     void getOrCreateAdminChannel_noExistingChannel_createsNewOne() {
         when(channelRepository.findByNameAndSystemTrue("Admin Notifications"))
                 .thenReturn(Optional.empty());
-        when(userCacheService.getAdminUserIds()).thenReturn(Set.of(1L, 2L));
+        when(userCacheService.getAdminUserUuids()).thenReturn(Set.of(ADMIN_UUID_1, ADMIN_UUID_2));
         when(channelRepository.save(any(Channel.class))).thenAnswer(inv -> {
             Channel c = inv.getArgument(0);
             c.setId(10L);
             return c;
         });
-        when(memberRepository.existsByChannelIdAndUserId(any(), any())).thenReturn(false);
+        when(memberRepository.existsByChannelIdAndUserUuid(any(), any())).thenReturn(false);
         when(memberRepository.save(any(ChannelMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
         var result = systemChannelService.getOrCreateAdminChannel();
@@ -83,7 +87,7 @@ class SystemChannelServiceTest {
     void getOrCreateAdminChannel_noAdmins_throwsIllegalState() {
         when(channelRepository.findByNameAndSystemTrue("Admin Notifications"))
                 .thenReturn(Optional.empty());
-        when(userCacheService.getAdminUserIds()).thenReturn(Set.of());
+        when(userCacheService.getAdminUserUuids()).thenReturn(Set.of());
 
         assertThatThrownBy(() -> systemChannelService.getOrCreateAdminChannel())
                 .isInstanceOf(IllegalStateException.class)
@@ -100,22 +104,22 @@ class SystemChannelServiceTest {
 
         when(channelRepository.findByNameAndSystemTrue("Admin Notifications"))
                 .thenReturn(Optional.of(channel));
-        when(userCacheService.getAdminUserIds()).thenReturn(Set.of(1L, 2L));
+        when(userCacheService.getAdminUserUuids()).thenReturn(Set.of(ADMIN_UUID_1, ADMIN_UUID_2));
 
         var existingMember = new ChannelMember();
-        existingMember.setUserId(1L);
+        existingMember.setUserUuid(ADMIN_UUID_1);
         existingMember.setChannelId(5L);
         when(memberRepository.findByChannelId(5L)).thenReturn(List.of(existingMember));
 
         // User 2 is not yet a member
-        when(memberRepository.existsByChannelIdAndUserId(5L, 2L)).thenReturn(false);
+        when(memberRepository.existsByChannelIdAndUserUuid(5L, ADMIN_UUID_2)).thenReturn(false);
         when(memberRepository.save(any(ChannelMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
         systemChannelService.syncAdminChannelMembers();
 
         var captor = ArgumentCaptor.forClass(ChannelMember.class);
         verify(memberRepository).save(captor.capture());
-        assertThat(captor.getValue().getUserId()).isEqualTo(2L);
+        assertThat(captor.getValue().getUserUuid()).isEqualTo(ADMIN_UUID_2);
     }
 
     @Test
@@ -135,10 +139,10 @@ class SystemChannelServiceTest {
 
         when(channelRepository.findByNameAndSystemTrue("Admin Notifications"))
                 .thenReturn(Optional.of(channel));
-        when(userCacheService.getAdminUserIds()).thenReturn(Set.of(1L));
+        when(userCacheService.getAdminUserUuids()).thenReturn(Set.of(ADMIN_UUID_1));
 
         var existingMember = new ChannelMember();
-        existingMember.setUserId(1L);
+        existingMember.setUserUuid(ADMIN_UUID_1);
         existingMember.setChannelId(5L);
         when(memberRepository.findByChannelId(5L)).thenReturn(List.of(existingMember));
 
@@ -160,7 +164,7 @@ class SystemChannelServiceTest {
         assertThat(msg.getChannelId()).isEqualTo(5L);
         assertThat(msg.getContent()).isEqualTo("Hello system");
         assertThat(msg.getMetadata()).isEqualTo("meta123");
-        assertThat(msg.getUserId()).isZero();
+        assertThat(msg.getUserUuid()).isEqualTo(new UUID(0, 0));
         assertThat(msg.getUsername()).isEqualTo("System");
         assertThat(msg.getMessageType()).isEqualTo("SYSTEM");
         assertThat(msg.getMessageId()).isNotNull();

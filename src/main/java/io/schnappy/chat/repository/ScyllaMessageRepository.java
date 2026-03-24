@@ -25,7 +25,7 @@ import java.util.UUID;
 public class ScyllaMessageRepository {
 
     private static final String COL_MESSAGE_ID = "message_id";
-    private static final String COL_USER_ID = "user_id";
+    private static final String COL_USER_UUID = "user_uuid";
     private static final String COL_USERNAME = "username";
     private static final String COL_CONTENT = "content";
     private static final String COL_PARENT_MESSAGE_ID = "parent_message_id";
@@ -54,22 +54,22 @@ public class ScyllaMessageRepository {
         this.session = session;
 
         this.insertByChannel = session.prepare(
-            "INSERT INTO messages_by_channel (channel_id, bucket, message_id, user_id, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata) " +
+            "INSERT INTO messages_by_channel (channel_id, bucket, message_id, user_uuid, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata) " +
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
         this.insertByUser = session.prepare(
-            "INSERT INTO messages_by_user (user_id, message_id, channel_id, bucket, content) " +
+            "INSERT INTO messages_by_user_v2 (user_uuid, message_id, channel_id, bucket, content) " +
             "VALUES (?, ?, ?, ?, ?)"
         );
 
         this.selectByChannel = session.prepare(
-            "SELECT message_id, user_id, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata " +
+            "SELECT message_id, user_uuid, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata " +
             "FROM messages_by_channel WHERE channel_id = ? AND bucket = ? LIMIT ?"
         );
 
         this.selectByChannelBefore = session.prepare(
-            "SELECT message_id, user_id, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata " +
+            "SELECT message_id, user_uuid, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata " +
             "FROM messages_by_channel WHERE channel_id = ? AND bucket = ? AND message_id < ? LIMIT ?"
         );
 
@@ -82,12 +82,12 @@ public class ScyllaMessageRepository {
         );
 
         this.insertEdit = session.prepare(
-            "INSERT INTO message_edits (channel_id, bucket, message_id, edit_id, user_id, content, hash) " +
+            "INSERT INTO message_edits (channel_id, bucket, message_id, edit_id, user_uuid, content, hash) " +
             "VALUES (?, ?, ?, ?, ?, ?, ?)"
         );
 
         this.selectEdits = session.prepare(
-            "SELECT edit_id, user_id, content, hash FROM message_edits " +
+            "SELECT edit_id, user_uuid, content, hash FROM message_edits " +
             "WHERE channel_id = ? AND bucket = ? AND message_id = ?"
         );
 
@@ -107,16 +107,16 @@ public class ScyllaMessageRepository {
         long channelId = msg.getChannelId();
 
         String prevHash = getChannelChainHead(channelId);
-        String hash = computeMessageHash(prevHash, channelId, msg.getUserId(), messageId, msg.getContent());
+        String hash = computeMessageHash(prevHash, channelId, msg.getUserUuid(), messageId, msg.getContent());
 
         session.execute(insertByChannel.bind(
-            channelId, bucket, messageId, msg.getUserId(), msg.getUsername(), msg.getContent(),
+            channelId, bucket, messageId, msg.getUserUuid(), msg.getUsername(), msg.getContent(),
             parentMessageId, false, false, hash, prevHash, msg.getKeyVersion(),
             msg.getMessageType(), msg.getMetadata()
         ));
 
         session.execute(insertByUser.bind(
-            msg.getUserId(), messageId, channelId, bucket, msg.getContent()
+            msg.getUserUuid(), messageId, channelId, bucket, msg.getContent()
         ));
 
         session.execute(upsertChainHead.bind(channelId, hash, messageId));
@@ -129,11 +129,11 @@ public class ScyllaMessageRepository {
         return row != null ? row.getString(COL_HASH) : "0";
     }
 
-    public void saveEdit(long channelId, String bucket, UUID messageId, long userId, String content, String originalHash) {
+    public void saveEdit(long channelId, String bucket, UUID messageId, UUID userUuid, String content, String originalHash) {
         UUID editId = Uuids.timeBased();
-        String editHash = computeEditHash(originalHash, editId, userId, content);
+        String editHash = computeEditHash(originalHash, editId, userUuid, content);
 
-        session.execute(insertEdit.bind(channelId, bucket, messageId, editId, userId, content, editHash));
+        session.execute(insertEdit.bind(channelId, bucket, messageId, editId, userUuid, content, editHash));
 
         session.execute(markEdited.bind(channelId, bucket, messageId));
     }
@@ -149,7 +149,7 @@ public class ScyllaMessageRepository {
         for (Row row : rs) {
             edits.add(new EditRecord(
                 row.getUuid(COL_EDIT_ID).toString(),
-                row.getLong(COL_USER_ID),
+                row.getUuid(COL_USER_UUID),
                 row.getString(COL_CONTENT),
                 row.getString(COL_HASH),
                 Instant.ofEpochMilli(Uuids.unixTimestamp(row.getUuid(COL_EDIT_ID)))
@@ -158,7 +158,7 @@ public class ScyllaMessageRepository {
         return edits;
     }
 
-    public record EditRecord(String editId, long userId, String content, String hash, Instant createdAt) {}
+    public record EditRecord(String editId, UUID userUuid, String content, String hash, Instant createdAt) {}
 
     public List<ChatMessageDto> getMessages(long channelId, String bucket, UUID beforeMessageId, int limit) {
         var rs = (beforeMessageId != null)
@@ -180,7 +180,7 @@ public class ScyllaMessageRepository {
             messages.add(ChatMessageDto.builder()
                 .messageId(msgId.toString())
                 .channelId(channelId)
-                .userId(row.getLong(COL_USER_ID))
+                .userUuid(row.getUuid(COL_USER_UUID))
                 .username(row.getString(COL_USERNAME))
                 .content(row.getString(COL_CONTENT))
                 .parentMessageId(parentId)
@@ -216,7 +216,7 @@ public class ScyllaMessageRepository {
         for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
             String bucket = date.toString();
             var rs = session.execute(
-                "SELECT message_id, user_id, content, hash, prev_hash, deleted " +
+                "SELECT message_id, user_uuid, content, hash, prev_hash, deleted " +
                 "FROM messages_by_channel WHERE channel_id = ? AND bucket = ? ORDER BY message_id ASC",
                 channelId, bucket);
 
@@ -260,7 +260,7 @@ public class ScyllaMessageRepository {
         }
 
         String recomputed = computeMessageHash(
-            storedPrevHash, channelId, row.getLong(COL_USER_ID), msgId, row.getString(COL_CONTENT));
+            storedPrevHash, channelId, row.getUuid(COL_USER_UUID), msgId, row.getString(COL_CONTENT));
         if (recomputed.equals(storedHash)) {
             state.validCount++;
         } else if (state.firstBrokenMessageId == null) {
@@ -289,13 +289,13 @@ public class ScyllaMessageRepository {
         return LocalDate.ofInstant(instant, ZoneOffset.UTC).toString();
     }
 
-    static String computeMessageHash(String prevHash, long channelId, long userId, UUID messageId, String content) {
-        String input = prevHash + "|" + channelId + "|" + userId + "|" + messageId + "|" + content;
+    static String computeMessageHash(String prevHash, long channelId, UUID userUuid, UUID messageId, String content) {
+        String input = prevHash + "|" + channelId + "|" + userUuid + "|" + messageId + "|" + content;
         return sha256(input);
     }
 
-    static String computeEditHash(String originalHash, UUID editId, long userId, String content) {
-        String input = originalHash + "|" + editId + "|" + userId + "|" + content;
+    static String computeEditHash(String originalHash, UUID editId, UUID userUuid, String content) {
+        String input = originalHash + "|" + editId + "|" + userUuid + "|" + content;
         return sha256(input);
     }
 

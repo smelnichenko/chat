@@ -5,9 +5,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface UserKeysRepository extends JpaRepository<UserKeys, Long> {
-    Optional<UserKeys> findByUserId(Long userId);
-    boolean existsByUserId(Long userId);
-    List<UserKeys> findByUserIdIn(List<Long> userIds);
+    Optional<UserKeys> findByUserUuid(UUID userUuid);
+    boolean existsByUserUuid(UUID userUuid);
+    List<UserKeys> findByUserUuidIn(List<UUID> userUuids);
 }

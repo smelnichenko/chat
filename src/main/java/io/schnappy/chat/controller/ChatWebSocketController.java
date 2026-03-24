@@ -10,6 +10,7 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @Controller
@@ -24,9 +25,9 @@ public class ChatWebSocketController {
         Map<String, Object> attrs = headerAccessor.getSessionAttributes();
         if (attrs == null) return;
 
-        Long userId = (Long) attrs.get("userId");
+        UUID userUuid = (UUID) attrs.get("userUuid");
         String username = (String) attrs.get("username");
-        if (userId == null) return;
+        if (userUuid == null) return;
 
         Object channelIdObj = payload.get("channelId");
         String content = (String) payload.get("content");
@@ -36,14 +37,14 @@ public class ChatWebSocketController {
         String parentMessageId = payload.containsKey("parentMessageId")
             ? (String) payload.get("parentMessageId") : null;
 
-        if (!chatService.isMember(channelId, userId)) {
-            log.warn("User {} tried to send to channel {} without membership", userId, channelId);
+        if (!chatService.isMember(channelId, userUuid)) {
+            log.warn("User {} tried to send to channel {} without membership", userUuid, channelId);
             return;
         }
 
         Integer keyVersion = payload.containsKey("keyVersion")
             ? Integer.valueOf(payload.get("keyVersion").toString()) : null;
-        chatService.sendMessage(channelId, new SendMessageRequest(content, parentMessageId, keyVersion), userId, username);
+        chatService.sendMessage(channelId, new SendMessageRequest(content, parentMessageId, keyVersion), userUuid, username);
     }
 
     @MessageMapping("/chat.read")
@@ -52,10 +53,10 @@ public class ChatWebSocketController {
         Map<String, Object> attrs = headerAccessor.getSessionAttributes();
         if (attrs == null) return;
 
-        Long userId = (Long) attrs.get("userId");
+        UUID userUuid = (UUID) attrs.get("userUuid");
         Object channelIdObj = payload.get("channelId");
-        if (userId == null || channelIdObj == null) return;
+        if (userUuid == null || channelIdObj == null) return;
         Long channelId = Long.valueOf(channelIdObj.toString());
-        chatService.updateLastRead(channelId, userId);
+        chatService.updateLastRead(channelId, userUuid);
     }
 }

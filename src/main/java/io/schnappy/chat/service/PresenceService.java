@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -17,25 +18,25 @@ public class PresenceService {
 
     private final StringRedisTemplate redisTemplate;
 
-    public void setOnline(Long userId) {
-        redisTemplate.opsForZSet().add(PRESENCE_KEY, userId.toString(),
+    public void setOnline(UUID userUuid) {
+        redisTemplate.opsForZSet().add(PRESENCE_KEY, userUuid.toString(),
             System.currentTimeMillis());
     }
 
-    public void setOffline(Long userId) {
-        redisTemplate.opsForZSet().remove(PRESENCE_KEY, userId.toString());
+    public void setOffline(UUID userUuid) {
+        redisTemplate.opsForZSet().remove(PRESENCE_KEY, userUuid.toString());
     }
 
-    public Set<Long> getOnlineUsers() {
+    public Set<UUID> getOnlineUsers() {
         long cutoff = System.currentTimeMillis() - HEARTBEAT_TTL.toMillis();
         redisTemplate.opsForZSet().removeRangeByScore(PRESENCE_KEY, 0, cutoff);
         var members = redisTemplate.opsForZSet().rangeByScore(PRESENCE_KEY, cutoff, Double.MAX_VALUE);
         if (members == null) return Set.of();
-        return members.stream().map(Long::valueOf).collect(Collectors.toSet());
+        return members.stream().map(UUID::fromString).collect(Collectors.toSet());
     }
 
-    public boolean isOnline(Long userId) {
-        Double score = redisTemplate.opsForZSet().score(PRESENCE_KEY, userId.toString());
+    public boolean isOnline(UUID userUuid) {
+        Double score = redisTemplate.opsForZSet().score(PRESENCE_KEY, userUuid.toString());
         if (score == null) return false;
         return score > System.currentTimeMillis() - HEARTBEAT_TTL.toMillis();
     }

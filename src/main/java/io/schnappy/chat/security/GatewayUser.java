@@ -1,17 +1,16 @@
 package io.schnappy.chat.security;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * User identity extracted from gateway X-User-* headers.
  * Primary identifier is uuid (from Keycloak JWT subject).
- * The userId (Long) is resolved lazily from the local user table.
  */
 public record GatewayUser(
-        String uuid,
+        UUID uuid,
         String email,
-        List<String> permissions,
-        Long userId
+        List<String> permissions
 ) {
     public static final String REQUEST_ATTRIBUTE = "gatewayUser";
 

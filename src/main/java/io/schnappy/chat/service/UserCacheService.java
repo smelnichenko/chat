@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 /**
  * User cache backed by PostgreSQL (chat_users table) with Redis as read-through cache.
  * Populated from Kafka user.events and gateway headers.
+ * All keys use UUID as the user identifier.
  */
 @Slf4j
 @Service
@@ -29,94 +30,91 @@ public class UserCacheService {
     private final StringRedisTemplate redisTemplate;
     private final ChatUserRepository chatUserRepository;
 
-    public void cacheUser(Long userId, String email, boolean enabled) {
-        cacheUser(userId, null, email, enabled);
-    }
-
-    public void cacheUser(Long userId, UUID uuid, String email, boolean enabled) {
+    public void cacheUser(UUID uuid, String email, boolean enabled) {
         // Write to PostgreSQL (source of truth)
-        var user = chatUserRepository.findById(userId).orElseGet(() -> {
+        var user = chatUserRepository.findByUuid(uuid).orElseGet(() -> {
             var u = new ChatUser();
-            u.setId(userId);
+            u.setUuid(uuid);
             return u;
         });
         user.setEmail(email);
         user.setEnabled(enabled);
-        if (uuid != null) {
-            user.setUuid(uuid);
-        }
         user.setUpdatedAt(Instant.now());
         chatUserRepository.save(user);
 
         // Write to Redis (cache)
-        redisTemplate.opsForValue().set(USER_EMAIL_KEY + userId, email);
-        redisTemplate.opsForValue().set(USER_ENABLED_KEY + userId, String.valueOf(enabled));
+        String key = uuid.toString();
+        redisTemplate.opsForValue().set(USER_EMAIL_KEY + key, email);
+        redisTemplate.opsForValue().set(USER_ENABLED_KEY + key, String.valueOf(enabled));
     }
 
-    public String getEmail(Long userId) {
+    public String getEmail(UUID uuid) {
+        String key = uuid.toString();
         // Try Redis first
-        String email = redisTemplate.opsForValue().get(USER_EMAIL_KEY + userId);
+        String email = redisTemplate.opsForValue().get(USER_EMAIL_KEY + key);
         if (email != null) return email;
 
         // Fall back to PostgreSQL
-        return chatUserRepository.findById(userId).map(user -> {
+        return chatUserRepository.findByUuid(uuid).map(user -> {
             // Populate Redis cache
-            redisTemplate.opsForValue().set(USER_EMAIL_KEY + userId, user.getEmail());
-            redisTemplate.opsForValue().set(USER_ENABLED_KEY + userId, String.valueOf(user.isEnabled()));
+            redisTemplate.opsForValue().set(USER_EMAIL_KEY + key, user.getEmail());
+            redisTemplate.opsForValue().set(USER_ENABLED_KEY + key, String.valueOf(user.isEnabled()));
             return user.getEmail();
         }).orElse(null);
     }
 
-    public boolean isEnabled(Long userId) {
-        String val = redisTemplate.opsForValue().get(USER_ENABLED_KEY + userId);
+    public boolean isEnabled(UUID uuid) {
+        String key = uuid.toString();
+        String val = redisTemplate.opsForValue().get(USER_ENABLED_KEY + key);
         if (val != null) return Boolean.parseBoolean(val);
 
         // Fall back to PostgreSQL
-        return chatUserRepository.findById(userId).map(user -> {
-            redisTemplate.opsForValue().set(USER_ENABLED_KEY + userId, String.valueOf(user.isEnabled()));
+        return chatUserRepository.findByUuid(uuid).map(user -> {
+            redisTemplate.opsForValue().set(USER_ENABLED_KEY + key, String.valueOf(user.isEnabled()));
             return user.isEnabled();
         }).orElse(true);
     }
 
-    public void setAdmin(Long userId, boolean admin) {
-        chatUserRepository.findById(userId).ifPresent(user -> {
+    public void setAdmin(UUID uuid, boolean admin) {
+        chatUserRepository.findByUuid(uuid).ifPresent(user -> {
             user.setAdmin(admin);
             user.setUpdatedAt(Instant.now());
             chatUserRepository.save(user);
         });
 
         if (admin) {
-            redisTemplate.opsForSet().add(ADMIN_USERS_KEY, userId.toString());
+            redisTemplate.opsForSet().add(ADMIN_USERS_KEY, uuid.toString());
         } else {
-            redisTemplate.opsForSet().remove(ADMIN_USERS_KEY, userId.toString());
+            redisTemplate.opsForSet().remove(ADMIN_USERS_KEY, uuid.toString());
         }
     }
 
-    public void addAdminUser(Long userId) {
-        setAdmin(userId, true);
+    public void addAdminUser(UUID uuid) {
+        setAdmin(uuid, true);
     }
 
-    public void removeAdminUser(Long userId) {
-        setAdmin(userId, false);
+    public void removeAdminUser(UUID uuid) {
+        setAdmin(uuid, false);
     }
 
-    public Set<Long> getAdminUserIds() {
+    public Set<UUID> getAdminUserUuids() {
         var members = redisTemplate.opsForSet().members(ADMIN_USERS_KEY);
         if (members != null && !members.isEmpty()) {
-            return members.stream().map(Long::valueOf).collect(Collectors.toSet());
+            return members.stream().map(UUID::fromString).collect(Collectors.toSet());
         }
 
         // Fall back to PostgreSQL
         var admins = chatUserRepository.findByAdminTrue().stream()
-                .map(ChatUser::getId)
+                .filter(u -> u.getUuid() != null)
+                .map(ChatUser::getUuid)
                 .collect(Collectors.toSet());
         admins.forEach(id -> redisTemplate.opsForSet().add(ADMIN_USERS_KEY, id.toString()));
         return admins;
     }
 
-    public Map<String, Object> getUserInfo(Long userId, String fallbackEmail) {
-        String email = getEmail(userId);
+    public Map<String, Object> getUserInfo(UUID uuid, String fallbackEmail) {
+        String email = getEmail(uuid);
         if (email == null) email = fallbackEmail;
-        return Map.of("id", userId, "email", email != null ? email : "unknown");
+        return Map.of("id", uuid.toString(), "email", email != null ? email : "unknown");
     }
 }

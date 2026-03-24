@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,6 +26,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PermissionInterceptorTest {
+
+    private static final UUID TEST_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
 
     @Mock
     private ProceedingJoinPoint joinPoint;
@@ -58,7 +61,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkClassPermission_userHasPermission_proceeds() throws Throwable {
-        var user = new GatewayUser("uuid", "test@test.com", List.of("CHAT"), 1L);
+        var user = new GatewayUser(TEST_UUID, "test@test.com", List.of("CHAT"));
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);
@@ -75,7 +78,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkClassPermission_userLacksPermission_throwsForbidden() throws Throwable {
-        var user = new GatewayUser("uuid", "test@test.com", List.of("METRICS"), 1L);
+        var user = new GatewayUser(TEST_UUID, "test@test.com", List.of("METRICS"));
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);
@@ -121,7 +124,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkMethodPermission_userHasPermission_proceeds() throws Throwable {
-        var user = new GatewayUser("uuid", "test@test.com", List.of("CHAT"), 1L);
+        var user = new GatewayUser(TEST_UUID, "test@test.com", List.of("CHAT"));
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);
@@ -134,7 +137,7 @@ class PermissionInterceptorTest {
 
     @Test
     void checkMethodPermission_userLacksPermission_throwsForbidden() {
-        var user = new GatewayUser("uuid", "test@test.com", List.of("PLAY"), 1L);
+        var user = new GatewayUser(TEST_UUID, "test@test.com", List.of("PLAY"));
         request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
 
         RequirePermission annotation = AnnotatedClass.class.getAnnotation(RequirePermission.class);

@@ -22,6 +22,7 @@ import java.util.UUID;
 public class SystemChannelService {
 
     private static final String ADMIN_CHANNEL_NAME = "Admin Notifications";
+    private static final UUID SYSTEM_UUID = new UUID(0, 0);
 
     private final ChannelRepository channelRepository;
     private final ChannelMemberRepository memberRepository;
@@ -35,38 +36,38 @@ public class SystemChannelService {
     }
 
     private Channel createAdminChannel() {
-        Set<Long> adminUserIds = userCacheService.getAdminUserIds();
-        if (adminUserIds.isEmpty()) {
+        Set<UUID> adminUserUuids = userCacheService.getAdminUserUuids();
+        if (adminUserUuids.isEmpty()) {
             throw new IllegalStateException("No admin users found to create system channel");
         }
-        Long creatorId = adminUserIds.iterator().next();
+        UUID creatorUuid = adminUserUuids.iterator().next();
 
         var channel = new Channel();
         channel.setName(ADMIN_CHANNEL_NAME);
         channel.setSystem(true);
-        channel.setCreatedBy(creatorId);
+        channel.setCreatedByUuid(creatorUuid);
         channel = channelRepository.save(channel);
 
-        for (Long userId : adminUserIds) {
-            addMemberIfAbsent(channel.getId(), userId);
+        for (UUID userUuid : adminUserUuids) {
+            addMemberIfAbsent(channel.getId(), userUuid);
         }
 
-        log.info("Created system channel '{}' with {} members", ADMIN_CHANNEL_NAME, adminUserIds.size());
+        log.info("Created system channel '{}' with {} members", ADMIN_CHANNEL_NAME, adminUserUuids.size());
         return channel;
     }
 
     @Transactional
     public void syncAdminChannelMembers() {
         channelRepository.findByNameAndSystemTrue(ADMIN_CHANNEL_NAME).ifPresent(channel -> {
-            Set<Long> adminUserIds = userCacheService.getAdminUserIds();
+            Set<UUID> adminUserUuids = userCacheService.getAdminUserUuids();
             var currentMembers = memberRepository.findByChannelId(channel.getId());
-            var currentMemberIds = new HashSet<>(currentMembers.stream()
-                .map(ChannelMember::getUserId).toList());
+            var currentMemberUuids = new HashSet<>(currentMembers.stream()
+                .map(ChannelMember::getUserUuid).toList());
 
-            for (Long userId : adminUserIds) {
-                if (!currentMemberIds.contains(userId)) {
-                    addMemberIfAbsent(channel.getId(), userId);
-                    log.info("Added user {} to admin channel", userId);
+            for (UUID userUuid : adminUserUuids) {
+                if (!currentMemberUuids.contains(userUuid)) {
+                    addMemberIfAbsent(channel.getId(), userUuid);
+                    log.info("Added user {} to admin channel", userUuid);
                 }
             }
         });
@@ -76,7 +77,7 @@ public class SystemChannelService {
         var message = ChatMessageDto.builder()
             .messageId(UUID.randomUUID().toString())
             .channelId(channelId)
-            .userId(0L)
+            .userUuid(SYSTEM_UUID)
             .username("System")
             .content(content)
             .createdAt(Instant.now())
@@ -87,11 +88,11 @@ public class SystemChannelService {
         kafkaProducer.sendMessage(message);
     }
 
-    private void addMemberIfAbsent(Long channelId, Long userId) {
-        if (!memberRepository.existsByChannelIdAndUserId(channelId, userId)) {
+    private void addMemberIfAbsent(Long channelId, UUID userUuid) {
+        if (!memberRepository.existsByChannelIdAndUserUuid(channelId, userUuid)) {
             var member = new ChannelMember();
             member.setChannelId(channelId);
-            member.setUserId(userId);
+            member.setUserUuid(userUuid);
             memberRepository.save(member);
         }
     }

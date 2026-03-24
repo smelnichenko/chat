@@ -13,15 +13,16 @@ import java.util.UUID;
 /**
  * Consumes user.events from the admin/user service to maintain
  * the local user cache in Redis and handle admin notifications.
+ * Uses UUID as the primary user identifier.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class UserEventConsumer {
 
-    private static final String EVENT_USER_ID = "userId";
+    private static final String EVENT_UUID = "uuid";
     private static final String EVENT_EMAIL = "email";
-    private static final String USER_ID_PREFIX = "user #";
+    private static final String USER_PREFIX = "user ";
 
     private final UserCacheService userCacheService;
     private final SystemChannelService systemChannelService;
@@ -48,61 +49,58 @@ public class UserEventConsumer {
     }
 
     private void handleUserRegistered(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
+        UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        UUID uuid = toUuid(event.get("uuid"));
-        if (userId == null || email == null) return;
+        if (uuid == null || email == null) return;
 
-        userCacheService.cacheUser(userId, uuid, email, true);
-        log.info("Cached new user: {} ({})", userId, email);
+        userCacheService.cacheUser(uuid, email, true);
+        log.info("Cached new user: {} ({})", uuid, email);
     }
 
     private void handleUserEnabledChanged(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
+        UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        UUID uuid = toUuid(event.get("uuid"));
         boolean enabled = "USER_ENABLED".equals(event.get("type"));
-        if (userId == null) return;
+        if (uuid == null) return;
 
-        userCacheService.cacheUser(userId, uuid, email != null ? email : "unknown", enabled);
-        log.info("User {} {}", userId, enabled ? "enabled" : "disabled");
+        userCacheService.cacheUser(uuid, email != null ? email : "unknown", enabled);
+        log.info("User {} {}", uuid, enabled ? "enabled" : "disabled");
     }
 
     private void handleProfileUpdated(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
+        UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        UUID uuid = toUuid(event.get("uuid"));
-        if (userId == null || email == null) return;
+        if (uuid == null || email == null) return;
 
-        userCacheService.cacheUser(userId, uuid, email, true);
+        userCacheService.cacheUser(uuid, email, true);
     }
 
     private void handleAdminGranted(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
-        if (userId == null) return;
+        UUID uuid = toUuid(event.get(EVENT_UUID));
+        if (uuid == null) return;
 
-        userCacheService.addAdminUser(userId);
+        userCacheService.addAdminUser(uuid);
         systemChannelService.syncAdminChannelMembers();
-        log.info("Admin granted to user {}", userId);
+        log.info("Admin granted to user {}", uuid);
     }
 
     private void handleAdminRevoked(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
-        if (userId == null) return;
+        UUID uuid = toUuid(event.get(EVENT_UUID));
+        if (uuid == null) return;
 
-        userCacheService.removeAdminUser(userId);
-        log.info("Admin revoked from user {}", userId);
+        userCacheService.removeAdminUser(uuid);
+        log.info("Admin revoked from user {}", uuid);
     }
 
     private void handleEmailVerified(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
+        UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        if (userId == null) return;
+        if (uuid == null) return;
 
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(),
-                "New user verified: " + (email != null ? email : USER_ID_PREFIX + userId),
+                "New user verified: " + (email != null ? email : USER_PREFIX + uuid),
                 null);
         } catch (RuntimeException e) {
             log.warn("Failed to post email verification notification: {}", e.getMessage());
@@ -110,17 +108,16 @@ public class UserEventConsumer {
     }
 
     private void handleRegistrationApproved(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
+        UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        UUID uuid = toUuid(event.get("uuid"));
-        if (userId == null) return;
+        if (uuid == null) return;
 
-        userCacheService.cacheUser(userId, uuid, email != null ? email : "unknown", true);
+        userCacheService.cacheUser(uuid, email != null ? email : "unknown", true);
 
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(),
-                "Registration approved: " + (email != null ? email : USER_ID_PREFIX + userId),
+                "Registration approved: " + (email != null ? email : USER_PREFIX + uuid),
                 null);
         } catch (RuntimeException e) {
             log.warn("Failed to post approval notification: {}", e.getMessage());
@@ -128,31 +125,18 @@ public class UserEventConsumer {
     }
 
     private void handleRegistrationDeclined(Map<String, Object> event) {
-        Long userId = toLong(event.get(EVENT_USER_ID));
+        UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        if (userId == null) return;
+        if (uuid == null) return;
 
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(),
-                "Registration declined: " + (email != null ? email : USER_ID_PREFIX + userId),
+                "Registration declined: " + (email != null ? email : USER_PREFIX + uuid),
                 null);
         } catch (RuntimeException e) {
             log.warn("Failed to post decline notification: {}", e.getMessage());
         }
-    }
-
-    private Long toLong(Object value) {
-        if (value instanceof Long l) return l;
-        if (value instanceof Number n) return n.longValue();
-        if (value instanceof String s) {
-            try {
-                return Long.parseLong(s);
-            } catch (NumberFormatException _) {
-                return null;
-            }
-        }
-        return null;
     }
 
     private UUID toUuid(Object value) {

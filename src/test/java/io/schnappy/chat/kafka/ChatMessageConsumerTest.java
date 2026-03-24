@@ -22,6 +22,8 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class ChatMessageConsumerTest {
 
+    private static final UUID USER_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
+
     @Mock
     private ScyllaMessageRepository messageRepository;
 
@@ -38,7 +40,7 @@ class ChatMessageConsumerTest {
         var message = ChatMessageDto.builder()
                 .messageId(UUID.randomUUID().toString())
                 .channelId(1L)
-                .userId(10L)
+                .userUuid(USER_UUID)
                 .username("alice")
                 .content("Hello")
                 .createdAt(Instant.now())
@@ -55,7 +57,7 @@ class ChatMessageConsumerTest {
         var message = ChatMessageDto.builder()
                 .messageId(UUID.randomUUID().toString())
                 .channelId(1L)
-                .userId(10L)
+                .userUuid(USER_UUID)
                 .username("alice")
                 .content("Reply")
                 .parentMessageId(parentId.toString())
@@ -72,7 +74,7 @@ class ChatMessageConsumerTest {
         var message = ChatMessageDto.builder()
                 .messageId(UUID.randomUUID().toString())
                 .channelId(1L)
-                .userId(10L)
+                .userUuid(USER_UUID)
                 .username("alice")
                 .content("Hello")
                 .createdAt(Instant.now())
@@ -92,7 +94,7 @@ class ChatMessageConsumerTest {
         var message = ChatMessageDto.builder()
                 .messageId(UUID.randomUUID().toString())
                 .channelId(42L)
-                .userId(10L)
+                .userUuid(USER_UUID)
                 .username("alice")
                 .content("Hello")
                 .createdAt(Instant.now())

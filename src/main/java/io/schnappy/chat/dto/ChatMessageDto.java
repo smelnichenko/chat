@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -15,7 +16,7 @@ public class ChatMessageDto {
 
     private String messageId;
     private long channelId;
-    private long userId;
+    private UUID userUuid;
     private String username;
     private String content;
     private String parentMessageId;

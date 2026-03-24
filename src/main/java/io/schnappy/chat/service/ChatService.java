@@ -44,29 +44,29 @@ public class ChatService {
     private final ChannelKeyBundleRepository keyBundleRepository;
 
     @Transactional
-    public Channel createChannel(CreateChannelRequest request, Long userId) {
+    public Channel createChannel(CreateChannelRequest request, UUID userUuid) {
         var channel = new Channel();
         channel.setName(request.name());
         channel.setEncrypted(request.encrypted() != null && request.encrypted());
-        channel.setCreatedBy(userId);
+        channel.setCreatedByUuid(userUuid);
         channel = channelRepository.save(channel);
 
         var member = new ChannelMember();
         member.setChannelId(channel.getId());
-        member.setUserId(userId);
+        member.setUserUuid(userUuid);
         memberRepository.save(member);
 
         return channel;
     }
 
-    public List<Channel> getUserChannels(Long userId) {
-        var memberships = memberRepository.findByUserId(userId);
+    public List<Channel> getUserChannels(UUID userUuid) {
+        var memberships = memberRepository.findByUserUuid(userUuid);
         var channelIds = memberships.stream().map(ChannelMember::getChannelId).toList();
         return channelRepository.findAllById(channelIds);
     }
 
-    public List<ChannelDto> getAllChannelsWithMembership(Long userId) {
-        var channels = getUserChannels(userId);
+    public List<ChannelDto> getAllChannelsWithMembership(UUID userUuid) {
+        var channels = getUserChannels(userUuid);
 
         return channels.stream()
             .map(ch -> ChannelDto.builder()
@@ -75,7 +75,7 @@ public class ChatService {
                 .createdAt(ch.getCreatedAt().toString())
                 .memberCount((int) memberRepository.countByChannelId(ch.getId()))
                 .joined(true)
-                .isOwner(ch.getCreatedBy().equals(userId))
+                .isOwner(ch.getCreatedByUuid().equals(userUuid))
                 .encrypted(ch.isEncrypted())
                 .currentKeyVersion(ch.getCurrentKeyVersion())
                 .isSystem(ch.isSystem())
@@ -84,46 +84,44 @@ public class ChatService {
     }
 
     @Transactional
-    public void inviteToChannel(Long channelId, Long invitedUserId, Long inviterUserId) {
+    public void inviteToChannel(Long channelId, UUID invitedUserUuid, UUID inviterUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
-        if (!channel.getCreatedBy().equals(inviterUserId)) {
+        if (!channel.getCreatedByUuid().equals(inviterUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the channel creator can invite");
         }
-        if (memberRepository.existsByChannelIdAndUserId(channelId, invitedUserId)) {
+        if (memberRepository.existsByChannelIdAndUserUuid(channelId, invitedUserUuid)) {
             return;
         }
         // Validate user exists via cache (populated from user.events)
-        if (userCacheService.getEmail(invitedUserId) == null) {
+        if (userCacheService.getEmail(invitedUserUuid) == null) {
             throw new IllegalArgumentException("User not found");
         }
         var member = new ChannelMember();
         member.setChannelId(channelId);
-        member.setUserId(invitedUserId);
+        member.setUserUuid(invitedUserUuid);
         memberRepository.save(member);
     }
 
-    public List<Map<String, Object>> getChatUsers(Long excludeUserId) {
+    public List<Map<String, Object>> getChatUsers(UUID excludeUserUuid) {
         // Return all known users from cache (populated from user.events)
-        // In the microservice, we don't have direct DB access to users table
-        // This returns users that have been seen via user.events
         return memberRepository.findAll().stream()
-            .map(ChannelMember::getUserId)
+            .map(ChannelMember::getUserUuid)
             .distinct()
-            .filter(uid -> !uid.equals(excludeUserId))
+            .filter(uid -> !uid.equals(excludeUserUuid))
             .filter(uid -> userCacheService.isEnabled(uid))
             .map(uid -> userCacheService.getUserInfo(uid, null))
             .toList();
     }
 
     @Transactional
-    public void deleteChannel(Long channelId, Long userId) {
+    public void deleteChannel(Long channelId, UUID userUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
         if (channel.isSystem()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "System channels cannot be deleted");
         }
-        if (!channel.getCreatedBy().equals(userId)) {
+        if (!channel.getCreatedByUuid().equals(userUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the channel creator can delete");
         }
         messageRepository.deleteMessagesByChannel(channelId, channel.getCreatedAt());
@@ -133,59 +131,59 @@ public class ChatService {
     }
 
     @Transactional
-    public void kickFromChannel(Long channelId, Long targetUserId, Long requesterId) {
+    public void kickFromChannel(Long channelId, UUID targetUserUuid, UUID requesterUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
         if (channel.isSystem()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot kick members from system channels");
         }
-        if (!channel.getCreatedBy().equals(requesterId)) {
+        if (!channel.getCreatedByUuid().equals(requesterUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the channel creator can kick members");
         }
-        if (targetUserId.equals(requesterId)) {
+        if (targetUserUuid.equals(requesterUuid)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot kick yourself");
         }
-        keyBundleRepository.deleteByChannelIdAndUserId(channelId, targetUserId);
-        memberRepository.deleteByChannelIdAndUserId(channelId, targetUserId);
+        keyBundleRepository.deleteByChannelIdAndUserUuid(channelId, targetUserUuid);
+        memberRepository.deleteByChannelIdAndUserUuid(channelId, targetUserUuid);
     }
 
     @Transactional
-    public void leaveChannel(Long channelId, Long userId) {
+    public void leaveChannel(Long channelId, UUID userUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
         if (channel.isSystem()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot leave system channels");
         }
-        if (channel.getCreatedBy().equals(userId)) {
+        if (channel.getCreatedByUuid().equals(userUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Channel creator cannot leave — delete the channel instead");
         }
-        keyBundleRepository.deleteByChannelIdAndUserId(channelId, userId);
-        memberRepository.deleteByChannelIdAndUserId(channelId, userId);
+        keyBundleRepository.deleteByChannelIdAndUserUuid(channelId, userUuid);
+        memberRepository.deleteByChannelIdAndUserUuid(channelId, userUuid);
     }
 
     public List<Map<String, Object>> getChannelMembers(Long channelId) {
         var members = memberRepository.findByChannelId(channelId);
         return members.stream()
             .map(m -> {
-                String email = userCacheService.getEmail(m.getUserId());
+                String email = userCacheService.getEmail(m.getUserUuid());
                 return Map.<String, Object>of(
-                    "id", m.getUserId(),
+                    "id", m.getUserUuid().toString(),
                     "email", email != null ? email : "unknown",
                     "joinedAt", m.getJoinedAt().toString()
                 );
             }).toList();
     }
 
-    public boolean isMember(Long channelId, Long userId) {
-        return memberRepository.existsByChannelIdAndUserId(channelId, userId);
+    public boolean isMember(Long channelId, UUID userUuid) {
+        return memberRepository.existsByChannelIdAndUserUuid(channelId, userUuid);
     }
 
-    public ChatMessageDto sendMessage(Long channelId, SendMessageRequest request, Long userId, String username) {
+    public ChatMessageDto sendMessage(Long channelId, SendMessageRequest request, UUID userUuid, String username) {
         var message = ChatMessageDto.builder()
             .messageId(UUID.randomUUID().toString())
             .channelId(channelId)
-            .userId(userId)
+            .userUuid(userUuid)
             .username(username)
             .content(request.content())
             .parentMessageId(request.parentMessageId())
@@ -197,19 +195,19 @@ public class ChatService {
         return message;
     }
 
-    public void editMessage(Long channelId, String messageId, String newContent, Long userId) {
+    public void editMessage(Long channelId, String messageId, String newContent, UUID userUuid) {
         var messages = messageRepository.getRecentMessages(channelId, 100);
         var original = messages.stream()
             .filter(m -> m.getMessageId().equals(messageId))
             .findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
 
-        if (original.getUserId() != userId) {
+        if (!original.getUserUuid().equals(userUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Can only edit your own messages");
         }
 
         String bucket = ScyllaMessageRepository.bucketForDate(original.getCreatedAt());
-        messageRepository.saveEdit(channelId, bucket, UUID.fromString(messageId), userId, newContent, original.getHash());
+        messageRepository.saveEdit(channelId, bucket, UUID.fromString(messageId), userUuid, newContent, original.getHash());
     }
 
     public List<ScyllaMessageRepository.EditRecord> getMessageEdits(Long channelId, String messageId) {
@@ -234,8 +232,8 @@ public class ChatService {
     }
 
     @Transactional
-    public void updateLastRead(Long channelId, Long userId) {
-        memberRepository.findByChannelIdAndUserId(channelId, userId)
+    public void updateLastRead(Long channelId, UUID userUuid) {
+        memberRepository.findByChannelIdAndUserUuid(channelId, userUuid)
             .ifPresent(member -> {
                 member.setLastReadAt(Instant.now());
                 memberRepository.save(member);
@@ -244,8 +242,8 @@ public class ChatService {
 
     // --- E2E Encryption: Key Management ---
 
-    public UserKeysDto getUserKeys(Long userId) {
-        var keys = userKeysRepository.findByUserId(userId).orElse(null);
+    public UserKeysDto getUserKeys(UUID userUuid) {
+        var keys = userKeysRepository.findByUserUuid(userUuid).orElse(null);
         if (keys == null) return null;
         return UserKeysDto.builder()
             .publicKey(keys.getPublicKey())
@@ -257,12 +255,12 @@ public class ChatService {
     }
 
     @Transactional
-    public UserKeysDto uploadUserKeys(UploadKeysRequest request, Long userId) {
-        if (userKeysRepository.existsByUserId(userId)) {
+    public UserKeysDto uploadUserKeys(UploadKeysRequest request, UUID userUuid) {
+        if (userKeysRepository.existsByUserUuid(userUuid)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Keys already exist");
         }
         var keys = new UserKeys();
-        keys.setUserId(userId);
+        keys.setUserUuid(userUuid);
         keys.setPublicKey(request.publicKey());
         keys.setEncryptedPrivateKey(request.encryptedPrivateKey());
         keys.setPbkdf2Salt(request.pbkdf2Salt());
@@ -278,8 +276,8 @@ public class ChatService {
     }
 
     @Transactional
-    public void updateUserKeys(UploadKeysRequest request, Long userId) {
-        var keys = userKeysRepository.findByUserId(userId)
+    public void updateUserKeys(UploadKeysRequest request, UUID userUuid) {
+        var keys = userKeysRepository.findByUserUuid(userUuid)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No keys found"));
         keys.setPublicKey(request.publicKey());
         keys.setEncryptedPrivateKey(request.encryptedPrivateKey());
@@ -290,46 +288,46 @@ public class ChatService {
         userKeysRepository.save(keys);
     }
 
-    public List<Map<String, Object>> getPublicKeys(List<Long> userIds) {
-        return userKeysRepository.findByUserIdIn(userIds).stream()
+    public List<Map<String, Object>> getPublicKeys(List<UUID> userUuids) {
+        return userKeysRepository.findByUserUuidIn(userUuids).stream()
             .map(k -> Map.<String, Object>of(
-                "userId", k.getUserId(),
+                "userUuid", k.getUserUuid().toString(),
                 "publicKey", k.getPublicKey(),
                 "keyVersion", k.getKeyVersion()
             ))
             .toList();
     }
 
-    public ChannelKeyBundleDto getChannelKeyBundle(Long channelId, Long userId) {
+    public ChannelKeyBundleDto getChannelKeyBundle(Long channelId, UUID userUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
         var bundle = keyBundleRepository
-            .findByChannelIdAndUserIdAndKeyVersion(channelId, userId, channel.getCurrentKeyVersion())
+            .findByChannelIdAndUserUuidAndKeyVersion(channelId, userUuid, channel.getCurrentKeyVersion())
             .orElse(null);
         if (bundle == null) return null;
         return ChannelKeyBundleDto.builder()
-            .userId(bundle.getUserId())
+            .userUuid(bundle.getUserUuid())
             .keyVersion(bundle.getKeyVersion())
             .encryptedChannelKey(bundle.getEncryptedChannelKey())
             .wrapperPublicKey(bundle.getWrapperPublicKey())
             .build();
     }
 
-    public List<ChannelKeyBundleDto> getChannelKeyBundles(Long channelId, Long userId, Integer keyVersion) {
-        if (!memberRepository.existsByChannelIdAndUserId(channelId, userId)) {
+    public List<ChannelKeyBundleDto> getChannelKeyBundles(Long channelId, UUID userUuid, Integer keyVersion) {
+        if (!memberRepository.existsByChannelIdAndUserUuid(channelId, userUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a member");
         }
         List<ChannelKeyBundle> bundles;
         if (keyVersion != null) {
-            bundles = keyBundleRepository.findByChannelIdAndUserId(channelId, userId).stream()
+            bundles = keyBundleRepository.findByChannelIdAndUserUuid(channelId, userUuid).stream()
                 .filter(b -> b.getKeyVersion() == keyVersion)
                 .toList();
         } else {
-            bundles = keyBundleRepository.findByChannelIdAndUserId(channelId, userId);
+            bundles = keyBundleRepository.findByChannelIdAndUserUuid(channelId, userUuid);
         }
         return bundles.stream()
             .map(b -> ChannelKeyBundleDto.builder()
-                .userId(b.getUserId())
+                .userUuid(b.getUserUuid())
                 .keyVersion(b.getKeyVersion())
                 .encryptedChannelKey(b.getEncryptedChannelKey())
                 .wrapperPublicKey(b.getWrapperPublicKey())
@@ -338,19 +336,19 @@ public class ChatService {
     }
 
     @Transactional
-    public void setChannelKeys(Long channelId, SetChannelKeysRequest request, Long userId) {
+    public void setChannelKeys(Long channelId, SetChannelKeysRequest request, UUID userUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
-        if (!channel.getCreatedBy().equals(userId)) {
+        if (!channel.getCreatedByUuid().equals(userUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the channel creator can set keys");
         }
         int version = channel.getCurrentKeyVersion() == 0 ? 1 : channel.getCurrentKeyVersion();
         for (var bundle : request.bundles()) {
-            if (memberRepository.existsByChannelIdAndUserId(channelId, bundle.userId())
-                    && keyBundleRepository.findByChannelIdAndUserIdAndKeyVersion(channelId, bundle.userId(), version).isEmpty()) {
+            if (memberRepository.existsByChannelIdAndUserUuid(channelId, bundle.userUuid())
+                    && keyBundleRepository.findByChannelIdAndUserUuidAndKeyVersion(channelId, bundle.userUuid(), version).isEmpty()) {
                 var keyBundle = new ChannelKeyBundle();
                 keyBundle.setChannelId(channelId);
-                keyBundle.setUserId(bundle.userId());
+                keyBundle.setUserUuid(bundle.userUuid());
                 keyBundle.setKeyVersion(version);
                 keyBundle.setEncryptedChannelKey(bundle.encryptedChannelKey());
                 keyBundle.setWrapperPublicKey(bundle.wrapperPublicKey());
@@ -364,20 +362,20 @@ public class ChatService {
     }
 
     @Transactional
-    public int rotateChannelKeys(Long channelId, SetChannelKeysRequest request, Long userId) {
+    public int rotateChannelKeys(Long channelId, SetChannelKeysRequest request, UUID userUuid) {
         var channel = channelRepository.findById(channelId)
             .orElseThrow(() -> new IllegalArgumentException(CHANNEL_NOT_FOUND));
-        if (!channel.getCreatedBy().equals(userId)) {
+        if (!channel.getCreatedByUuid().equals(userUuid)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the channel creator can rotate keys");
         }
         int newVersion = channel.getCurrentKeyVersion() + 1;
         for (var bundle : request.bundles()) {
-            if (!memberRepository.existsByChannelIdAndUserId(channelId, bundle.userId())) {
+            if (!memberRepository.existsByChannelIdAndUserUuid(channelId, bundle.userUuid())) {
                 continue;
             }
             var keyBundle = new ChannelKeyBundle();
             keyBundle.setChannelId(channelId);
-            keyBundle.setUserId(bundle.userId());
+            keyBundle.setUserUuid(bundle.userUuid());
             keyBundle.setKeyVersion(newVersion);
             keyBundle.setEncryptedChannelKey(bundle.encryptedChannelKey());
             keyBundle.setWrapperPublicKey(bundle.wrapperPublicKey());

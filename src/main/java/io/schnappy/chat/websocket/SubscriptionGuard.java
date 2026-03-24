@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,13 +32,13 @@ public class SubscriptionGuard {
         }
 
         Map<String, Object> attrs = accessor.getSessionAttributes();
-        Long userId = attrs != null ? (Long) attrs.get("userId") : null;
+        UUID userUuid = attrs != null ? (UUID) attrs.get("userUuid") : null;
 
         Matcher channelMatcher = CHANNEL_TOPIC.matcher(destination);
         if (channelMatcher.matches()) {
             Long channelId = Long.parseLong(channelMatcher.group(1));
-            if (userId == null || !chatService.isMember(channelId, userId)) {
-                log.warn("Rejected subscription to channel {} by user {}", channelId, userId);
+            if (userUuid == null || !chatService.isMember(channelId, userUuid)) {
+                log.warn("Rejected subscription to channel {} by user {}", channelId, userUuid);
                 throw new MessageDeliveryException("Not a member of channel " + channelId);
             }
         }
