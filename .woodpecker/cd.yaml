@@ -124,7 +124,7 @@ steps:
       - printf "machine git.pmon.dev\nlogin woodpecker\npassword %s\n" "$INFRA_TOKEN" > ~/.netrc && chmod 600 ~/.netrc
       - GIT_HASH=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
       - |
-        HELMRELEASE=clusters/production/schnappy/helmrelease.yaml
+        HELMRELEASE=clusters/production/schnappy/values.yaml
 
         for attempt in 1 2 3 4 5; do
           cd / && rm -rf /tmp/infra
