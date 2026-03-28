@@ -1,6 +1,5 @@
 package io.schnappy.chat.security;
 
-import io.schnappy.chat.service.UserCacheService;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +13,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -23,21 +21,18 @@ class GatewayAuthFilterTest {
     private static final String TEST_UUID = "550e8400-e29b-41d4-a716-446655440000";
 
     @Mock
-    private UserCacheService userCacheService;
-
-    @Mock
     private FilterChain filterChain;
 
     private GatewayAuthFilter gatewayAuthFilter;
 
     @BeforeEach
     void setUp() {
-        gatewayAuthFilter = new GatewayAuthFilter(userCacheService);
+        gatewayAuthFilter = new GatewayAuthFilter();
         SecurityContextHolder.clearContext();
     }
 
     @Test
-    void validHeaders_populatesSecurityContextAndCachesUser() throws Exception {
+    void validHeaders_populatesSecurityContext() throws Exception {
         var request = new MockHttpServletRequest();
         request.addHeader("X-User-UUID", TEST_UUID);
         request.addHeader("X-User-Email", "alice@example.com");
@@ -58,7 +53,6 @@ class GatewayAuthFilterTest {
         var attrUser = (GatewayUser) request.getAttribute(GatewayUser.REQUEST_ATTRIBUTE);
         assertThat(attrUser).isEqualTo(user);
 
-        verify(userCacheService).cacheUser(UUID.fromString(TEST_UUID), "alice@example.com", true);
         verify(filterChain).doFilter(request, response);
     }
 
@@ -70,8 +64,6 @@ class GatewayAuthFilterTest {
         gatewayAuthFilter.doFilterInternal(request, response, filterChain);
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        verify(userCacheService, never()).cacheUser(org.mockito.ArgumentMatchers.any(UUID.class),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         verify(filterChain).doFilter(request, response);
     }
 
@@ -97,8 +89,7 @@ class GatewayAuthFilterTest {
         gatewayAuthFilter.doFilterInternal(request, response, filterChain);
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        verify(userCacheService, never()).cacheUser(org.mockito.ArgumentMatchers.any(UUID.class),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+        assertThat(request.getAttribute(GatewayUser.REQUEST_ATTRIBUTE)).isNull();
         verify(filterChain).doFilter(request, response);
     }
 
@@ -154,7 +145,7 @@ class GatewayAuthFilterTest {
     }
 
     @Test
-    void noEmailHeader_doesNotCacheButStillAuthenticates() throws Exception {
+    void noEmailHeader_stillAuthenticates() throws Exception {
         var request = new MockHttpServletRequest();
         request.addHeader("X-User-UUID", TEST_UUID);
         request.addHeader("X-User-Permissions", "CHAT");
@@ -167,8 +158,5 @@ class GatewayAuthFilterTest {
         var user = (GatewayUser) auth.getPrincipal();
         assertThat(user.uuid()).isEqualTo(UUID.fromString(TEST_UUID));
         assertThat(user.email()).isNull();
-
-        verify(userCacheService, never()).cacheUser(org.mockito.ArgumentMatchers.any(UUID.class),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 }
