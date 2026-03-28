@@ -13,12 +13,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Reads X-User-* headers set by the API gateway after JWT validation.
@@ -33,6 +37,14 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Set<String> FILTERED_ROLES = Set.of("offline_access", "uma_authorization");
     private static final String FILTERED_ROLES_PREFIX = "default-roles-";
+    private static final Duration KNOWN_USER_TTL = Duration.ofMinutes(5);
+
+    private final UserProvisioner userProvisioner;
+    private final Map<UUID, Instant> knownUsers = new ConcurrentHashMap<>();
+
+    public GatewayAuthFilter(UserProvisioner userProvisioner) {
+        this.userProvisioner = userProvisioner;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -57,6 +69,8 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                 permList = extractPermissionsFromJwt(request);
             }
 
+            ensureUserProvisioned(uuid, request.getHeader("X-User-Email"), permList);
+
             var user = new GatewayUser(
                     uuid,
                     request.getHeader("X-User-Email"),
@@ -73,6 +87,16 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void ensureUserProvisioned(UUID uuid, String email, List<String> permissions) {
+        Instant lastSeen = knownUsers.get(uuid);
+        if (lastSeen != null && lastSeen.isAfter(Instant.now().minus(KNOWN_USER_TTL))) {
+            return;
+        }
+
+        userProvisioner.provisionUser(uuid.toString(), email, permissions);
+        knownUsers.put(uuid, Instant.now());
     }
 
     private List<String> extractPermissionsFromJwt(HttpServletRequest request) {
