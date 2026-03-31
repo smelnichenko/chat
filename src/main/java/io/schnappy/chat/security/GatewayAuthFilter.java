@@ -50,7 +50,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String userUuid = request.getHeader("X-User-UUID");
-        String userEmail = userEmail;
+        String userEmail = request.getHeader("X-User-Email");
 
         // If no gateway headers, extract identity from JWT
         if ((userUuid == null || userUuid.isBlank()) && request.getHeader("Authorization") != null) {
