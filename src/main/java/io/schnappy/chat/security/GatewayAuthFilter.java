@@ -50,6 +50,24 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String userUuid = request.getHeader("X-User-UUID");
+        String userEmail = userEmail;
+
+        // If no gateway headers, extract identity from JWT
+        if ((userUuid == null || userUuid.isBlank()) && request.getHeader("Authorization") != null) {
+            try {
+                String token = request.getHeader("Authorization").substring(7);
+                String[] jwtParts = token.split("\\.");
+                if (jwtParts.length >= 2) {
+                    JsonNode jwt = MAPPER.readTree(Base64.getUrlDecoder().decode(jwtParts[1]));
+                    userUuid = jwt.path("sub").asText(null);
+                    if (userEmail == null || userEmail.isBlank()) {
+                        userEmail = jwt.path("email").asText(null);
+                    }
+                }
+            } catch (Exception _) {
+                // fall through
+            }
+        }
 
         if (userUuid != null && !userUuid.isBlank()) {
             UUID uuid;
@@ -69,11 +87,11 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                 permList = extractPermissionsFromJwt(request);
             }
 
-            ensureUserProvisioned(uuid, request.getHeader("X-User-Email"), permList);
+            ensureUserProvisioned(uuid, userEmail, permList);
 
             var user = new GatewayUser(
                     uuid,
-                    request.getHeader("X-User-Email"),
+                    userEmail,
                     permList
             );
 
