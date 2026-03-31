@@ -6,6 +6,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -64,34 +66,36 @@ class GatewayAuthFilterTest {
         assertThat(user.permissions()).containsExactly("METRICS", "PLAY");
     }
 
-    @Test
-    void withNoHeaders_doesNotAuthenticate() throws ServletException, IOException {
-        var request = new MockHttpServletRequest();
-
-        filter.doFilterInternal(request, new MockHttpServletResponse(), filterChain);
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        assertThat(request.getAttribute(GatewayUser.REQUEST_ATTRIBUTE)).isNull();
-    }
-
-    @Test
-    void withBlankUuid_doesNotAuthenticate() throws ServletException, IOException {
-        var request = new MockHttpServletRequest();
-        request.addHeader("X-User-UUID", "   ");
-
+    @ParameterizedTest(name = "unauthenticated when {0}")
+    @MethodSource("unauthenticatedRequests")
+    void doesNotAuthenticate(String scenario, MockHttpServletRequest request) throws ServletException, IOException {
         filter.doFilterInternal(request, new MockHttpServletResponse(), filterChain);
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
-    @Test
-    void withInvalidUuid_doesNotAuthenticate() throws ServletException, IOException {
-        var request = new MockHttpServletRequest();
-        request.addHeader("X-User-UUID", "not-a-uuid");
+    static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> unauthenticatedRequests() {
+        var noHeaders = new MockHttpServletRequest();
 
-        filter.doFilterInternal(request, new MockHttpServletResponse(), filterChain);
+        var blankUuid = new MockHttpServletRequest();
+        blankUuid.addHeader("X-User-UUID", "   ");
 
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        var invalidUuid = new MockHttpServletRequest();
+        invalidUuid.addHeader("X-User-UUID", "not-a-uuid");
+
+        var basicAuth = new MockHttpServletRequest();
+        basicAuth.addHeader("Authorization", "Basic dXNlcjpwYXNz");
+
+        var malformedJwt = new MockHttpServletRequest();
+        malformedJwt.addHeader("Authorization", "Bearer not.a.jwt");
+
+        return java.util.stream.Stream.of(
+                org.junit.jupiter.params.provider.Arguments.of("no headers", noHeaders),
+                org.junit.jupiter.params.provider.Arguments.of("blank UUID", blankUuid),
+                org.junit.jupiter.params.provider.Arguments.of("invalid UUID", invalidUuid),
+                org.junit.jupiter.params.provider.Arguments.of("Basic auth", basicAuth),
+                org.junit.jupiter.params.provider.Arguments.of("malformed JWT", malformedJwt)
+        );
     }
 
     @Test
@@ -165,26 +169,6 @@ class GatewayAuthFilterTest {
         GatewayUser user = (GatewayUser) request.getAttribute(GatewayUser.REQUEST_ATTRIBUTE);
         assertThat(user).isNotNull();
         assertThat(user.permissions()).isEmpty();
-    }
-
-    @Test
-    void withBasicAuth_doesNotAuthenticate() throws ServletException, IOException {
-        var request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Basic dXNlcjpwYXNz");
-
-        filter.doFilterInternal(request, new MockHttpServletResponse(), filterChain);
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-    }
-
-    @Test
-    void withMalformedJwt_doesNotAuthenticate() throws ServletException, IOException {
-        var request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer not.a.jwt");
-
-        filter.doFilterInternal(request, new MockHttpServletResponse(), filterChain);
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
     @Test
