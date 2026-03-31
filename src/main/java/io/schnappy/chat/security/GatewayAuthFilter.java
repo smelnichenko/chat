@@ -25,16 +25,16 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Reads X-User-* headers set by the API gateway after JWT validation.
+ * Reads X-User-* headers set by the Istio gateway after JWT validation.
+ * Falls back to extracting claims directly from the JWT payload.
  * Populates SecurityContext and sets GatewayUser as a request attribute.
- *
- * Permissions are read from X-User-Permissions header (Spring Cloud Gateway)
- * or extracted from the JWT payload (Envoy Gateway).
  */
 @Component
 public class GatewayAuthFilter extends OncePerRequestFilter {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String AUTH_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
     private static final Set<String> FILTERED_ROLES = Set.of("offline_access", "uma_authorization");
     private static final String FILTERED_ROLES_PREFIX = "default-roles-";
     private static final Duration KNOWN_USER_TTL = Duration.ofMinutes(5);
@@ -51,60 +51,76 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String userUuid = request.getHeader("X-User-UUID");
         String userEmail = request.getHeader("X-User-Email");
+        JsonNode jwtPayload = parseJwtPayload(request);
 
-        // If no gateway headers, extract identity from JWT
-        if ((userUuid == null || userUuid.isBlank()) && request.getHeader("Authorization") != null) {
-            try {
-                String token = request.getHeader("Authorization").substring(7);
-                String[] jwtParts = token.split("\\.");
-                if (jwtParts.length >= 2) {
-                    JsonNode jwt = MAPPER.readTree(Base64.getUrlDecoder().decode(jwtParts[1]));
-                    userUuid = jwt.path("sub").asText(null);
-                    if (userEmail == null || userEmail.isBlank()) {
-                        userEmail = jwt.path("email").asText(null);
-                    }
-                }
-            } catch (Exception _) {
-                // fall through
-            }
+        if ((userUuid == null || userUuid.isBlank()) && jwtPayload != null) {
+            userUuid = jwtPayload.path("sub").asText(null);
+            userEmail = jwtPayload.path("email").asText(userEmail);
         }
 
         if (userUuid != null && !userUuid.isBlank()) {
-            UUID uuid;
-            try {
-                uuid = UUID.fromString(userUuid);
-            } catch (IllegalArgumentException _) {
-                filterChain.doFilter(request, response);
-                return;
-            }
-
-            String permissions = request.getHeader("X-User-Permissions");
-            List<String> permList;
-
-            if (permissions != null && !permissions.isBlank()) {
-                permList = Arrays.asList(permissions.split(","));
-            } else {
-                permList = extractPermissionsFromJwt(request);
-            }
-
-            ensureUserProvisioned(uuid, userEmail, permList);
-
-            var user = new GatewayUser(
-                    uuid,
-                    userEmail,
-                    permList
-            );
-
-            request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
-
-            var authorities = permList.stream()
-                    .map(SimpleGrantedAuthority::new)
-                    .toList();
-            var auth = new UsernamePasswordAuthenticationToken(user, null, authorities);
-            SecurityContextHolder.getContext().setAuthentication(auth);
+            authenticateUser(request, userUuid, userEmail, jwtPayload);
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void authenticateUser(HttpServletRequest request, String userUuid, String userEmail, JsonNode jwtPayload) {
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(userUuid);
+        } catch (IllegalArgumentException _) {
+            return;
+        }
+
+        List<String> permList = resolvePermissions(request, jwtPayload);
+        ensureUserProvisioned(uuid, userEmail, permList);
+
+        var user = new GatewayUser(uuid, userEmail, permList);
+        request.setAttribute(GatewayUser.REQUEST_ATTRIBUTE, user);
+
+        var authorities = permList.stream()
+                .map(SimpleGrantedAuthority::new)
+                .toList();
+        var auth = new UsernamePasswordAuthenticationToken(user, null, authorities);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    private List<String> resolvePermissions(HttpServletRequest request, JsonNode jwtPayload) {
+        String permissions = request.getHeader("X-User-Permissions");
+        if (permissions != null && !permissions.isBlank()) {
+            return Arrays.asList(permissions.split(","));
+        }
+        return extractRolesFromJwt(jwtPayload);
+    }
+
+    private JsonNode parseJwtPayload(HttpServletRequest request) {
+        String authHeader = request.getHeader(AUTH_HEADER);
+        if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
+            return null;
+        }
+        try {
+            String[] parts = authHeader.substring(BEARER_PREFIX.length()).split("\\.");
+            if (parts.length < 2) return null;
+            return MAPPER.readTree(Base64.getUrlDecoder().decode(parts[1]));
+        } catch (Exception _) {
+            return null;
+        }
+    }
+
+    private List<String> extractRolesFromJwt(JsonNode jwtPayload) {
+        if (jwtPayload == null) return List.of();
+        JsonNode roles = jwtPayload.path("realm_access").path("roles");
+        if (!roles.isArray()) return List.of();
+
+        List<String> filtered = new ArrayList<>();
+        for (JsonNode role : roles) {
+            String r = role.asText();
+            if (!FILTERED_ROLES.contains(r) && !r.startsWith(FILTERED_ROLES_PREFIX)) {
+                filtered.add(r);
+            }
+        }
+        return filtered;
     }
 
     private void ensureUserProvisioned(UUID uuid, String email, List<String> permissions) {
@@ -112,37 +128,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
         if (lastSeen != null && lastSeen.isAfter(Instant.now().minus(KNOWN_USER_TTL))) {
             return;
         }
-
         userProvisioner.provisionUser(uuid.toString(), email, permissions);
         knownUsers.put(uuid, Instant.now());
-    }
-
-    private List<String> extractPermissionsFromJwt(HttpServletRequest request) {
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return List.of();
-        }
-
-        try {
-            String[] parts = authHeader.substring(7).split("\\.");
-            if (parts.length < 2) return List.of();
-
-            byte[] payload = Base64.getUrlDecoder().decode(parts[1]);
-            JsonNode jwt = MAPPER.readTree(payload);
-            JsonNode roles = jwt.path("realm_access").path("roles");
-
-            if (!roles.isArray()) return List.of();
-
-            List<String> filtered = new ArrayList<>();
-            for (JsonNode role : roles) {
-                String r = role.asText();
-                if (!FILTERED_ROLES.contains(r) && !r.startsWith(FILTERED_ROLES_PREFIX)) {
-                    filtered.add(r);
-                }
-            }
-            return filtered;
-        } catch (Exception _) {
-            return List.of();
-        }
     }
 }
