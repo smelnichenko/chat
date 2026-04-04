@@ -9,13 +9,13 @@ when:
 clone:
   - name: git
     image: woodpeckerci/plugin-git
-    environment:
-      PLUGIN_NETRC_MACHINE: git.pmon.dev
-      PLUGIN_NETRC_USERNAME: forgejo_admin
-      PLUGIN_NETRC_PASSWORD:
+    settings:
+      netrc_machine: git.pmon.dev
+      netrc_username: forgejo_admin
+      netrc_password:
         from_secret: clone_token
-      PLUGIN_PARTIAL: "false"
-      PLUGIN_DEPTH: "100"
+      partial: false
+      depth: 100
 
 steps:
   # ============== TEST ==============
