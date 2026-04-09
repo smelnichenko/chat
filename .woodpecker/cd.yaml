@@ -119,7 +119,7 @@ steps:
       - printf "machine git.pmon.dev\nlogin woodpecker\npassword %s\n" "$INFRA_TOKEN" > ~/.netrc && chmod 600 ~/.netrc
       - GIT_HASH=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
       - |
-        HELMRELEASE=clusters/production/schnappy/values.yaml
+        HELMRELEASE=clusters/production/schnappy-test-apps/values.yaml
 
         for attempt in 1 2 3 4 5; do
           cd / && rm -rf /tmp/infra
@@ -132,7 +132,7 @@ steps:
 
           git add -A
           git diff --cached --quiet && { echo "No changes to commit"; exit 0; }
-          git commit -m "deploy: chat=$GIT_HASH"
+          git commit -m "deploy(test): chat=$GIT_HASH"
           git push && { echo "Push succeeded"; exit 0; }
 
           echo "Push conflict (attempt $attempt), retrying..."
