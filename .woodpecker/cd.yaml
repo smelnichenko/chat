@@ -95,7 +95,7 @@ steps:
           --skip-tls-verify-registry=git.pmon.dev \
           --registry-mirror=nexus.pmon.dev:8082 \
           --insecure-registry=nexus.pmon.dev:8082 \
-          --build-arg=http_proxy=http://schnappy-production-apt-cache.schnappy-production.svc.cluster.local:3142 \
+          --build-arg=http_proxy=http://schnappy-infra-apt-cache.schnappy-infra.svc.cluster.local:3142 \
           --cache=true \
           --cache-repo=git.pmon.dev/schnappy/chat/cache
     depends_on: [build-jar]
