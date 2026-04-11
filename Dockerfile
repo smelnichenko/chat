@@ -19,7 +19,7 @@ WORKDIR /app
 
 RUN groupadd -r app && useradd -r -g app app
 
-COPY --from=builder /app/build/libs/*.jar app.jar
+COPY --from=builder /app/build/libs/*.jar chat.jar
 
 RUN mkdir -p /app/config && chown -R app:app /app
 
@@ -27,4 +27,4 @@ USER app
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar chat.jar"]
