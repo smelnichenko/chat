@@ -106,7 +106,7 @@ steps:
           git config user.name "Woodpecker CD"
           git config user.email "woodpecker@pmon.dev"
 
-          sed -i "s|tag: \".*\"  # chat-service|tag: \"$GIT_HASH\"  # chat-service|" "$HELMRELEASE"
+          sed -i "s|tag: \".*\"  # chat|tag: \"$GIT_HASH\"  # chat|" "$HELMRELEASE"
 
           git add -A
           git diff --cached --quiet && { echo "No changes to commit"; exit 0; }
