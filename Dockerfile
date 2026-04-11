@@ -1,21 +1,30 @@
-# Runtime-only Dockerfile - expects pre-built JAR
-# Used for fast deployment when artifacts are built locally
+# Build stage
+FROM eclipse-temurin:25-jdk AS builder
+
+WORKDIR /app
+
+COPY gradle gradle
+COPY gradlew build.gradle settings.gradle ./
+
+RUN ./gradlew dependencies --no-daemon
+
+COPY src src
+
+RUN ./gradlew bootJar --no-daemon -x test
+
+# Runtime stage
 FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 
-# Create non-root user
 RUN groupadd -r app && useradd -r -g app app
 
-# Copy the pre-built jar (must be provided at build context)
-COPY app.jar app.jar
+COPY --from=builder /app/build/libs/*.jar app.jar
 
-# Create config directory
 RUN mkdir -p /app/config && chown -R app:app /app
 
 USER app
 
 EXPOSE 8080
 
-# Health check
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
