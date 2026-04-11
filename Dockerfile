@@ -4,10 +4,8 @@ FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 
-# Install curl for healthcheck and create non-root user
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd -r app && useradd -r -g app app
+# Create non-root user
+RUN groupadd -r app && useradd -r -g app app
 
 # Copy the pre-built jar (must be provided at build context)
 COPY app.jar app.jar
@@ -21,6 +19,6 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
+  CMD wget -qO- http://localhost:8080/actuator/health || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
