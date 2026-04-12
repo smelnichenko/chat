@@ -55,7 +55,7 @@ class PermissionInterceptorTest {
     @RequirePermission(Permission.CHAT)
     private static class AnnotatedClass {
         // Method body intentionally empty — stub target for AOP annotation scanning in tests
-        @SuppressWarnings("java:S1186")
+        @SuppressWarnings({ "java:S1186", "unused" })
         public void someMethod() {}
     }
 
