@@ -41,7 +41,7 @@ POST   /api/chat/channels/{id}/read         # Mark as read
 - **PostgreSQL** (monitor_chat): channels, channel_members, chat_users, user_keys, channel_key_bundles
 - **ScyllaDB** (keyspace: chat): messages_by_channel, messages_by_user_v2, message_edits, reactions, attachments (day-bucketed partitions)
 - **Kafka** topics: chat.messages (12p), chat.events (6p), chat.notifications (3p), user.events (3p)
-- **Redis**: presence (sorted set with 60s TTL)
+- **Valkey**: presence (sorted set with 60s TTL)
 
 ## Full Infrastructure Docs
 

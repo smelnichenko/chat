@@ -10,7 +10,7 @@ Receives authenticated requests via the API gateway. Uses Kafka as the message b
 API Gateway --> Chat (this service) --> PostgreSQL (monitor_chat DB, channels/members)
                                     --> ScyllaDB (messages, day-bucketed)
                                     --> Kafka (chat.messages, chat.events)
-                                    --> Redis (presence, user cache)
+                                    --> Valkey (presence, user cache)
             <-- WebSocket (STOMP/SockJS)
             <-- Kafka <-- Admin        (user event sync)
 ```
@@ -21,7 +21,7 @@ API Gateway --> Chat (this service) --> PostgreSQL (monitor_chat DB, channels/me
 - PostgreSQL 17 (channels, members, user keys, key bundles)
 - ScyllaDB 6.2 (message persistence, CQL via DataStax driver 4.17.0)
 - Kafka 4.2 KRaft (message bus, 12 partitions for chat.messages)
-- Redis (presence tracking, user cache)
+- Valkey (presence tracking, user cache)
 - STOMP over SockJS (real-time WebSocket delivery)
 - Optional E2E encryption (ECDH P-256, AES-256-GCM)
 - Liquibase (PostgreSQL migrations)
@@ -30,7 +30,7 @@ API Gateway --> Chat (this service) --> PostgreSQL (monitor_chat DB, channels/me
 ## Development
 
 ```bash
-# From the ops repo (starts Kafka, ScyllaDB, PostgreSQL, Redis)
+# From the ops repo (starts Kafka, ScyllaDB, PostgreSQL, Valkey)
 task dev
 
 # Or start infra only, then run from IDE

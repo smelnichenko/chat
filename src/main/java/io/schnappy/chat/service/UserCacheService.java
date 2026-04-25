@@ -14,7 +14,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * User cache backed by PostgreSQL (chat_users table) with Redis as read-through cache.
+ * User cache backed by PostgreSQL (chat_users table) with Valkey as read-through cache.
  * Populated from Kafka user.events and gateway headers.
  * All keys use UUID as the user identifier.
  */
@@ -42,7 +42,7 @@ public class UserCacheService {
         user.setUpdatedAt(Instant.now());
         chatUserRepository.save(user);
 
-        // Write to Redis (cache)
+        // Write to Valkey (cache)
         String key = uuid.toString();
         redisTemplate.opsForValue().set(USER_EMAIL_KEY + key, email);
         redisTemplate.opsForValue().set(USER_ENABLED_KEY + key, String.valueOf(enabled));
@@ -50,7 +50,7 @@ public class UserCacheService {
 
     public String getEmail(UUID uuid) {
         String key = uuid.toString();
-        // Try Redis first
+        // Try Valkey first
         String email = redisTemplate.opsForValue().get(USER_EMAIL_KEY + key);
         if (email != null) return email;
 
