@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="chat"/>
+
+    <property name="CONSOLE_PATTERN" value="%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %X{requestId:--} %msg%n"/>
+
+    <!-- trace_id / span_id are auto-populated into MDC by
+         spring-boot-starter-opentelemetry's logback bridge whenever
+         a tracing context is active. Empty strings when no span. -->
+    <property name="JSON_PATTERN" value='{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","logger":"%logger","thread":"%thread","requestId":"%X{requestId:-}","traceId":"%X{trace_id:-}","spanId":"%X{span_id:-}","message":"%message"}%n'/>
+
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.security" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+
+    <logger name="io.schnappy" level="DEBUG"/>
+
+    <springProfile name="default,dev,local">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder><pattern>${CONSOLE_PATTERN}</pattern></encoder>
+        </appender>
+        <root level="INFO"><appender-ref ref="CONSOLE"/></root>
+    </springProfile>
+
+    <springProfile name="prod,production,docker">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder><pattern>${JSON_PATTERN}</pattern></encoder>
+        </appender>
+        <root level="INFO"><appender-ref ref="JSON_CONSOLE"/></root>
+    </springProfile>
+</configuration>
