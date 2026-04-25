@@ -43,12 +43,12 @@ task dev:infra
 
 ## Deployment
 
-Deployed to k3s via Flux CD GitOps:
+Deployed to kubeadm via Argo CD GitOps:
 
 1. Push to master triggers Woodpecker CD pipeline
 2. `./gradlew test` runs, then Kaniko builds the container image
 3. Image pushed to Forgejo registry at `git.pmon.dev`
 4. Woodpecker commits new image tag to the `schnappy/infra` repo
-5. Flux detects the change and reconciles the HelmRelease
+5. Argo CD detects the change and syncs the Application
 
 Production WebSocket endpoint at `wss://pmon.dev/api/ws/chat` in the `monitor` namespace.

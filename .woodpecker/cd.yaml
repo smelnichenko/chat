@@ -89,7 +89,7 @@ steps:
             target:
               env: REGISTRY_TOKEN
 
-  # ============== UPDATE INFRA REPO (Flux deploys) ==============
+  # ============== UPDATE INFRA REPO (Argo CD syncs) ==============
   - name: update-infra
     image: alpine:latest
     commands:
