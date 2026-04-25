@@ -22,7 +22,7 @@ steps:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/monitor_chat
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: test
-      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_HOST: valkey
     commands:
       - ./gradlew clean check --no-daemon
     backend_options:
@@ -134,5 +134,5 @@ services:
       POSTGRES_DB: monitor_chat
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test
-  - name: redis
-    image: redis:7-alpine
+  - name: valkey
+    image: valkey/valkey:8.1-alpine
