@@ -44,7 +44,14 @@ dependencies {
     implementation 'com.datastax.oss:java-driver-query-builder:4.17.0'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
-    implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+    // Swap the default OkHttp-based OTLP sender for the JDK HttpClient
+    // sender. OkHttp sender (v1.55.0) doesn't configure readTimeout/
+    // writeTimeout, so OkHttp's 10s defaults cap every export — even
+    // when management.opentelemetry.tracing.export.otlp.timeout=30s.
+    implementation('org.springframework.boot:spring-boot-starter-opentelemetry') {
+        exclude group: 'io.opentelemetry', module: 'opentelemetry-exporter-sender-okhttp'
+    }
+    runtimeOnly 'io.opentelemetry:opentelemetry-exporter-sender-jdk'
     runtimeOnly 'org.postgresql:postgresql'
 
     compileOnly 'org.projectlombok:lombok'
