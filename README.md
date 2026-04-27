@@ -4,27 +4,27 @@ Real-time messaging service for pmon.dev with channel-based chat and optional E2
 
 ## Architecture
 
-Receives authenticated requests via the API gateway. Uses Kafka as the message bus for persistence and delivery fan-out. Stores messages in ScyllaDB (day-bucketed partitions) and channel/member metadata in PostgreSQL. Delivers real-time messages over STOMP/WebSocket. Consumes Kafka `user.events` to sync users from the admin service.
+Behind Istio ingress; Istio validates Keycloak JWTs (including for the WebSocket upgrade) and forwards to the sidecar. Uses Kafka as the message bus for persistence and delivery fan-out. Stores messages in ScyllaDB (day-bucketed partitions) and channel/member metadata in PostgreSQL. Delivers real-time messages over STOMP/SockJS WebSocket. Consumes Kafka `user.events` to sync users from the admin service.
 
 ```
-API Gateway --> Chat (this service) --> PostgreSQL (monitor_chat DB, channels/members)
-                                    --> ScyllaDB (messages, day-bucketed)
-                                    --> Kafka (chat.messages, chat.events)
-                                    --> Valkey (presence, user cache)
-            <-- WebSocket (STOMP/SockJS)
-            <-- Kafka <-- Admin        (user event sync)
+Istio ingress --> sidecar --> Chat --> PostgreSQL (chat DB: channels, members, key bundles)
+                                   --> ScyllaDB  (messages, day-bucketed)
+                                   --> Kafka     (chat.messages, chat.events)
+                                   --> Valkey    (presence, user cache)
+              <-- WebSocket (STOMP/SockJS)
+              <-- Kafka <-- Admin       (user event sync)
 ```
 
 ## Tech Stack
 
 - Java 25, Spring Boot 4.0, Gradle 9.3
-- PostgreSQL 17 (channels, members, user keys, key bundles)
-- ScyllaDB 6.2 (message persistence, CQL via DataStax driver 4.17.0)
-- Kafka 4.2 KRaft (message bus, 12 partitions for chat.messages)
-- Valkey (presence tracking, user cache)
-- STOMP over SockJS (real-time WebSocket delivery)
-- Optional E2E encryption (ECDH P-256, AES-256-GCM)
-- Liquibase (PostgreSQL migrations)
+- PostgreSQL 17 — channels, members, user keys, key bundles
+- ScyllaDB 6.2 — message persistence, CQL via DataStax driver
+- Kafka 4.2 KRaft — message bus, partitioned `chat.messages`
+- Valkey — presence tracking, user cache
+- Spring WebSocket — STOMP over SockJS
+- Optional E2E encryption — ECDH P-256, AES-256-GCM (keys handled client-side)
+- Liquibase — PostgreSQL migrations
 - SpringDoc OpenAPI
 
 ## Development
@@ -45,10 +45,10 @@ task dev:infra
 
 Deployed to kubeadm via Argo CD GitOps:
 
-1. Push to master triggers Woodpecker CD pipeline
-2. `./gradlew test` runs, then Kaniko builds the container image
+1. Push to master triggers Woodpecker CD
+2. `./gradlew clean check` then Kaniko builds the image
 3. Image pushed to Forgejo registry at `git.pmon.dev`
-4. Woodpecker commits new image tag to the `schnappy/infra` repo
-5. Argo CD detects the change and syncs the Application
+4. Woodpecker commits the new tag to `schnappy/infra`
+5. Argo CD syncs the Application
 
-Production WebSocket endpoint at `wss://pmon.dev/api/ws/chat` in the `monitor` namespace.
+Production WebSocket endpoint at `wss://pmon.dev/api/ws/chat` in the `schnappy-production-apps` namespace.
