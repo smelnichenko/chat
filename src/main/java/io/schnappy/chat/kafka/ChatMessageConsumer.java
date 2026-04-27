@@ -5,7 +5,6 @@ import io.schnappy.chat.repository.ScyllaMessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -16,7 +15,6 @@ import java.util.UUID;
 public class ChatMessageConsumer {
 
     private final ScyllaMessageRepository messageRepository;
-    private final SimpMessagingTemplate messagingTemplate;
 
     @KafkaListener(topics = "chat.messages", groupId = "chat-persistence")
     public void persistMessage(ChatMessageDto message) {
@@ -28,13 +26,5 @@ public class ChatMessageConsumer {
             log.error("Failed to persist message: {}", e.getMessage());
             throw e;
         }
-    }
-
-    @KafkaListener(topics = "chat.messages", groupId = "chat-delivery")
-    public void deliverMessage(ChatMessageDto message) {
-        messagingTemplate.convertAndSend(
-            "/topic/channel." + message.getChannelId(),
-            message
-        );
     }
 }

@@ -37,7 +37,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-kafka'
     implementation 'org.springframework.boot:spring-boot-starter-liquibase'
     implementation 'com.datastax.oss:java-driver-core:4.17.0'
@@ -76,8 +75,7 @@ jacocoTestReport {
         classDirectories.setFrom(files(classDirectories.files.collect {
             fileTree(dir: it, exclude: [
                 '**/config/**',
-                '**/ChatApplication.class',
-                '**/websocket/WebSocketConfig.class'
+                '**/ChatApplication.class'
             ])
         }))
     }

@@ -7,7 +7,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -26,9 +25,6 @@ class ChatMessageConsumerTest {
 
     @Mock
     private ScyllaMessageRepository messageRepository;
-
-    @Mock
-    private SimpMessagingTemplate messagingTemplate;
 
     @InjectMocks
     private ChatMessageConsumer chatMessageConsumer;
@@ -87,33 +83,4 @@ class ChatMessageConsumerTest {
                 .hasMessageContaining("ScyllaDB down");
     }
 
-    // --- deliverMessage ---
-
-    @Test
-    void deliverMessage_sendsToCorrectTopic() {
-        var message = ChatMessageDto.builder()
-                .messageId(UUID.randomUUID().toString())
-                .channelId(42L)
-                .userUuid(USER_UUID)
-                .username("alice")
-                .content("Hello")
-                .createdAt(Instant.now())
-                .build();
-
-        chatMessageConsumer.deliverMessage(message);
-
-        verify(messagingTemplate).convertAndSend("/topic/channel.42", message);
-    }
-
-    @Test
-    void deliverMessage_differentChannelIds_routeCorrectly() {
-        var msg1 = ChatMessageDto.builder().channelId(1L).content("A").build();
-        var msg2 = ChatMessageDto.builder().channelId(99L).content("B").build();
-
-        chatMessageConsumer.deliverMessage(msg1);
-        chatMessageConsumer.deliverMessage(msg2);
-
-        verify(messagingTemplate).convertAndSend("/topic/channel.1", msg1);
-        verify(messagingTemplate).convertAndSend("/topic/channel.99", msg2);
-    }
 }
