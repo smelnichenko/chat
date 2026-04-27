@@ -4,15 +4,17 @@ Real-time messaging backend for pmon.dev — channel-based chat with optional cl
 
 ## Architecture
 
-Behind the Istio ingress gateway. Istio terminates TLS, validates the Keycloak JWT (including on the WebSocket upgrade), and forwards to the sidecar. Kafka is the message bus: `POST /messages` produces to `chat.messages` and returns; two consumer groups inside this service then persist to ScyllaDB and fan out to STOMP subscribers. PostgreSQL holds channel/membership/key metadata, ScyllaDB holds message history (day-bucketed by `(channel_id, YYYY-MM-DD UTC)`), and Valkey tracks presence.
+Behind the Istio ingress gateway. Istio terminates TLS, validates the Keycloak JWT, and forwards to the sidecar. Kafka is the message bus: `POST /messages` produces to `chat.messages` (persistence) and `events.chat.messages` (real-time fan-out). The persistence consumer in this service writes to ScyllaDB; Centrifugo (separate workload) consumes the events topic and pushes to subscribed clients over WebSocket. PostgreSQL holds channel/membership/key metadata, ScyllaDB holds message history (day-bucketed by `(channel_id, YYYY-MM-DD UTC)`), Valkey tracks presence.
 
 ```
-Istio ingress --> sidecar --> Chat --> PostgreSQL (chat DB: channels, members, keys)
-                                   --> ScyllaDB  (messages, day-bucketed)
-                                   --> Kafka     (chat.messages — produce + self-consume)
-                                   --> Valkey    (presence, user cache)
-              <-- WebSocket (STOMP/SockJS, /topic/channel.{id})
+Istio ingress --> sidecar --> Chat --> PostgreSQL  (channels, members, keys)
+                                   --> ScyllaDB    (messages, day-bucketed)
+                                   --> Kafka       (chat.messages → ScyllaDB persistence)
+                                                   (events.chat.messages → Centrifugo fan-out)
+                                   --> Valkey      (presence, user cache)
               <-- Kafka <-- Admin       (user.events sync)
+
+(Real-time push to clients goes Kafka → Centrifugo → browser, not through chat-service.)
 ```
 
 ## Tech Stack
@@ -20,23 +22,30 @@ Istio ingress --> sidecar --> Chat --> PostgreSQL (chat DB: channels, members, k
 - Java 25, Spring Boot 4.0, Gradle 9.3
 - PostgreSQL 17 — channels, members, user keys, channel key bundles
 - ScyllaDB 6.2 — message history, CQL via DataStax driver 4.17
-- Kafka — `chat.messages` (12p) message bus, `user.events` consumer
+- Kafka — `chat.messages` (persistence), `events.chat.messages` (envelope topic for Centrifugo), `user.events` consumer
 - Valkey — presence (sorted set, 60s TTL), local user cache
-- Spring WebSocket — STOMP simple broker over SockJS
 - Optional E2E encryption — ECDH P-256 + AES-256-GCM, key generation in the browser
 - Liquibase — PostgreSQL migrations
 - OpenTelemetry — traces to Tempo, metrics to Prometheus → Mimir
 - ArchUnit — architectural test rules
 - SpringDoc OpenAPI
 
-## Real-time
+## Real-time fan-out
+
+This service no longer terminates WebSocket connections. The flow:
+
+1. `POST /api/chat/channels/{id}/messages` arrives, server persists to ScyllaDB-via-Kafka, then publishes a publication envelope to `events.chat.messages` with header `x-centrifugo-channels: chat:room:<id>`.
+2. Centrifugo's Kafka async-consumer reads the envelope, fans it out to every browser subscribed to `chat:room:<id>` over WebSocket.
+3. Browsers obtain a per-channel subscription token from `admin` (`POST /api/realtime/sub-token`); admin checks membership against `chat`'s `GET /internal/membership` before signing.
+
+Internal endpoint:
 
 ```
-WS handshake:  wss://pmon.dev/api/ws/chat
-SUBSCRIBE:     /topic/channel.{channelId}     (SubscriptionGuard enforces membership)
-SEND:          /app/chat.send                 (produces to chat.messages)
-SEND:          /app/chat.read                 (read receipts)
+GET /internal/membership?user=<uuid>&channel=chat:room:<id>
+  → 200 if the user is a channel member, 404 otherwise
 ```
+
+mTLS-only path; mesh-level Istio AuthorizationPolicy DENY rejects every source SA except admin.
 
 ## REST API
 
@@ -66,4 +75,4 @@ Deployed to kubeadm via Argo CD GitOps:
 4. Woodpecker commits the new tag to `schnappy/infra`
 5. Argo CD syncs the Application
 
-Production WebSocket endpoint at `wss://pmon.dev/api/ws/chat` in the `schnappy-production-apps` namespace.
+Production at `https://pmon.dev/api/chat/*` in the `schnappy-production` namespace. Real-time WebSocket endpoint at `wss://pmon.dev/realtime/connection/websocket` (Centrifugo).
