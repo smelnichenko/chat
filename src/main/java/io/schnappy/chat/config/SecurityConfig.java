@@ -12,9 +12,9 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Security config for downstream service behind API gateway.
- * Gateway validates JWT and sets X-User-* headers.
- * This filter reads those headers and populates SecurityContext.
+ * Security config for downstream service behind the Istio ingress.
+ * Istio validates the Keycloak JWT at the edge; GatewayAuthFilter reads
+ * the propagated token and populates the SecurityContext for handlers.
  */
 @Configuration
 @EnableWebSecurity
@@ -35,6 +35,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
                 .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/ws/**").permitAll()
+                // mTLS-fronted; Istio AuthZ DENY for non-admin source SAs.
+                .requestMatchers("/internal/**").permitAll()
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex
