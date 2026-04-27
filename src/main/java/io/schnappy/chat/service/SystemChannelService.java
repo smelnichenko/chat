@@ -4,6 +4,8 @@ import io.schnappy.chat.dto.ChatMessageDto;
 import io.schnappy.chat.entity.Channel;
 import io.schnappy.chat.entity.ChannelMember;
 import io.schnappy.chat.kafka.ChatKafkaProducer;
+import io.schnappy.chat.kafka.EventEnvelope;
+import io.schnappy.chat.kafka.EventEnvelopeProducer;
 import io.schnappy.chat.repository.ChannelMemberRepository;
 import io.schnappy.chat.repository.ChannelRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ public class SystemChannelService {
     private final ChannelRepository channelRepository;
     private final ChannelMemberRepository memberRepository;
     private final ChatKafkaProducer kafkaProducer;
+    private final EventEnvelopeProducer envelopeProducer;
     private final UserCacheService userCacheService;
 
     @Transactional
@@ -86,6 +89,11 @@ public class SystemChannelService {
             .build();
 
         kafkaProducer.sendMessage(message);
+        envelopeProducer.publish(
+            "chat:room:" + channelId,
+            String.valueOf(channelId),
+            EventEnvelope.of("message.sent", "room:" + channelId, SYSTEM_UUID.toString(), message)
+        );
     }
 
     private void addMemberIfAbsent(Long channelId, UUID userUuid) {

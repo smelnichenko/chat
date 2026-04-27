@@ -3,6 +3,7 @@ package io.schnappy.chat.service;
 import io.schnappy.chat.entity.Channel;
 import io.schnappy.chat.entity.ChannelMember;
 import io.schnappy.chat.kafka.ChatKafkaProducer;
+import io.schnappy.chat.kafka.EventEnvelopeProducer;
 import io.schnappy.chat.repository.ChannelMemberRepository;
 import io.schnappy.chat.repository.ChannelRepository;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ class SystemChannelServiceTest {
 
     @Mock
     private ChatKafkaProducer kafkaProducer;
+
+    @Mock
+    private EventEnvelopeProducer envelopeProducer;
 
     @Mock
     private UserCacheService userCacheService;

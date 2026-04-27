@@ -10,6 +10,7 @@ import io.schnappy.chat.entity.ChannelKeyBundle;
 import io.schnappy.chat.entity.ChannelMember;
 import io.schnappy.chat.entity.UserKeys;
 import io.schnappy.chat.kafka.ChatKafkaProducer;
+import io.schnappy.chat.kafka.EventEnvelopeProducer;
 import io.schnappy.chat.repository.ChannelKeyBundleRepository;
 import io.schnappy.chat.repository.ChannelMemberRepository;
 import io.schnappy.chat.repository.ChannelRepository;
@@ -47,6 +48,7 @@ class ChatServiceTest {
     @Mock private ChannelMemberRepository memberRepository;
     @Mock private ScyllaMessageRepository messageRepository;
     @Mock private ChatKafkaProducer kafkaProducer;
+    @Mock private EventEnvelopeProducer envelopeProducer;
     @Mock private UserCacheService userCacheService;
     @Mock private UserKeysRepository userKeysRepository;
     @Mock private ChannelKeyBundleRepository keyBundleRepository;

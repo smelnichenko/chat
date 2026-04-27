@@ -13,6 +13,8 @@ import io.schnappy.chat.entity.ChannelKeyBundle;
 import io.schnappy.chat.entity.ChannelMember;
 import io.schnappy.chat.entity.UserKeys;
 import io.schnappy.chat.kafka.ChatKafkaProducer;
+import io.schnappy.chat.kafka.EventEnvelope;
+import io.schnappy.chat.kafka.EventEnvelopeProducer;
 import io.schnappy.chat.repository.ChannelKeyBundleRepository;
 import io.schnappy.chat.repository.ChannelMemberRepository;
 import io.schnappy.chat.repository.ChannelRepository;
@@ -39,6 +41,7 @@ public class ChatService {
     private final ChannelMemberRepository memberRepository;
     private final ScyllaMessageRepository messageRepository;
     private final ChatKafkaProducer kafkaProducer;
+    private final EventEnvelopeProducer envelopeProducer;
     private final UserCacheService userCacheService;
     private final UserKeysRepository userKeysRepository;
     private final ChannelKeyBundleRepository keyBundleRepository;
@@ -192,7 +195,16 @@ public class ChatService {
             .build();
 
         kafkaProducer.sendMessage(message);
+        publishEnvelope("message.sent", channelId, userUuid, message);
         return message;
+    }
+
+    private void publishEnvelope(String type, Long channelId, UUID actor, Object payload) {
+        envelopeProducer.publish(
+            "chat:room:" + channelId,
+            String.valueOf(channelId),
+            EventEnvelope.of(type, "room:" + channelId, actor.toString(), payload)
+        );
     }
 
     public void editMessage(Long channelId, String messageId, String newContent, UUID userUuid) {
@@ -208,6 +220,8 @@ public class ChatService {
 
         String bucket = ScyllaMessageRepository.bucketForDate(original.getCreatedAt());
         messageRepository.saveEdit(channelId, bucket, UUID.fromString(messageId), userUuid, newContent, original.getHash());
+        publishEnvelope("message.edited", channelId, userUuid,
+            Map.of("messageId", messageId, "editedContent", newContent));
     }
 
     public List<ScyllaMessageRepository.EditRecord> getMessageEdits(Long channelId, String messageId) {
