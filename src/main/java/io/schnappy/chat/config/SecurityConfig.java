@@ -1,6 +1,6 @@
 package io.schnappy.chat.config;
 
-import io.schnappy.chat.security.GatewayAuthFilter;
+import io.schnappy.chat.filter.GatewayAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;

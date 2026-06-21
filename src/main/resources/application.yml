@@ -19,6 +19,17 @@ spring:
     open-in-view: false
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # App-side JWT validation, defense-in-depth on top of the gateway's
+          # edge check: the signature is verified against the Keycloak JWKS here
+          # too, so a forged token injected east-west (bypassing the gateway) is
+          # rejected. jwk-set-uri (not issuer-uri alone) keeps key fetching lazy
+          # — no Keycloak dependency at startup.
+          issuer-uri: ${KEYCLOAK_ISSUER:http://localhost:8080/realms/schnappy}
+          jwk-set-uri: ${KEYCLOAK_JWKS_URI:http://localhost:8080/realms/schnappy/protocol/openid-connect/certs}
   data:
     redis:
       host: ${VALKEY_HOST:localhost}

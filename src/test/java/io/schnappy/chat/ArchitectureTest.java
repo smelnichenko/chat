@@ -118,15 +118,15 @@ public class ArchitectureTest {
                     .as("Security classes must not depend on repositories");
 
     // -------------------------------------------------------------------------
-    // GatewayAuthFilter must reside in the security package
+    // GatewayAuthFilter must reside in the filter package
     // -------------------------------------------------------------------------
 
     @ArchTest
-    static final ArchRule gateway_auth_filter_in_security_package =
+    static final ArchRule gateway_auth_filter_in_filter_package =
             classes()
                     .that().haveSimpleName("GatewayAuthFilter")
-                    .should().resideInAPackage("..security..")
-                    .as("GatewayAuthFilter must reside in the security package");
+                    .should().resideInAPackage("..filter..")
+                    .as("GatewayAuthFilter must reside in the filter package");
 
     // -------------------------------------------------------------------------
     // No package cycles

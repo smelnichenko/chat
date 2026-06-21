@@ -5,8 +5,11 @@ import io.schnappy.chat.security.UserProvisioner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,6 +17,11 @@ import java.util.UUID;
 /**
  * Checks if a user exists locally; if not, calls the admin service's
  * ensure-user endpoint to trigger provisioning via Kafka events.
+ *
+ * <p>The call relays the caller's own validated Bearer token (taken from the
+ * current request) so the admin service can re-validate it — admin no longer
+ * trusts X-User-* headers. {@code email}/{@code roles} are derived by admin
+ * from that same token, so they are not forwarded here.
  */
 @Component
 public class UserProvisionerAdapter implements UserProvisioner {
@@ -38,13 +46,17 @@ public class UserProvisionerAdapter implements UserProvisioner {
                 return;
             }
 
+            String authorization = currentBearerToken();
+            if (authorization == null) {
+                log.warn("No bearer token on the current request; skipping provisioning for user {}", uuid);
+                return;
+            }
+
             log.info("User {} not found locally, calling admin ensure-user", uuid);
 
             restClient.post()
                     .uri("/api/auth/ensure-user")
-                    .header("X-User-UUID", uuid)
-                    .header("X-User-Email", email)
-                    .header("X-User-Permissions", String.join(",", roles))
+                    .header(HttpHeaders.AUTHORIZATION, authorization)
                     .retrieve()
                     .toBodilessEntity();
 
@@ -52,5 +64,13 @@ public class UserProvisionerAdapter implements UserProvisioner {
         } catch (Exception e) {
             log.warn("Failed to provision user {}: {}", uuid, e.getMessage());
         }
+    }
+
+    /** The current request's Authorization header (the validated Bearer token), or null. */
+    private static String currentBearerToken() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            return attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
+        }
+        return null;
     }
 }
