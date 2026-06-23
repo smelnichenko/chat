@@ -4,6 +4,8 @@ import io.schnappy.chat.repository.ChannelMemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
@@ -61,41 +63,17 @@ class InternalControllerTest {
         verifyNoInteractions(memberRepository);
     }
 
-    @Test
-    void membership_wrongChannelSegmentCount_returns404() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "chat:room",            // wrong segment count
+            "notification:room:7",  // wrong prefix
+            "chat:dm:7",            // wrong middle segment
+            "chat:room:abc"         // non-numeric channel id
+    })
+    void membership_malformedChannel_returns404(String channel) throws Exception {
         mockMvc.perform(get("/internal/membership")
                         .param("user", USER_UUID.toString())
-                        .param("channel", "chat:room"))
-                .andExpect(status().isNotFound());
-
-        verifyNoInteractions(memberRepository);
-    }
-
-    @Test
-    void membership_wrongChannelPrefix_returns404() throws Exception {
-        mockMvc.perform(get("/internal/membership")
-                        .param("user", USER_UUID.toString())
-                        .param("channel", "notification:room:7"))
-                .andExpect(status().isNotFound());
-
-        verifyNoInteractions(memberRepository);
-    }
-
-    @Test
-    void membership_wrongChannelMiddleSegment_returns404() throws Exception {
-        mockMvc.perform(get("/internal/membership")
-                        .param("user", USER_UUID.toString())
-                        .param("channel", "chat:dm:7"))
-                .andExpect(status().isNotFound());
-
-        verifyNoInteractions(memberRepository);
-    }
-
-    @Test
-    void membership_nonNumericChannelId_returns404() throws Exception {
-        mockMvc.perform(get("/internal/membership")
-                        .param("user", USER_UUID.toString())
-                        .param("channel", "chat:room:abc"))
+                        .param("channel", channel))
                 .andExpect(status().isNotFound());
 
         verifyNoInteractions(memberRepository);
