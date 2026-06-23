@@ -20,10 +20,10 @@ public class EventEnvelopeProducer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     public void publish(String channel, String key, EventEnvelope envelope) {
-        var record = new ProducerRecord<String, Object>(TOPIC, null, key, envelope);
-        record.headers().add(new RecordHeader(
+        var producerRecord = new ProducerRecord<String, Object>(TOPIC, null, key, envelope);
+        producerRecord.headers().add(new RecordHeader(
             CHANNELS_HEADER, channel.getBytes(StandardCharsets.UTF_8)));
-        kafkaTemplate.send(record).whenComplete((result, ex) -> {
+        kafkaTemplate.send(producerRecord).whenComplete((result, ex) -> {
             if (ex != null) {
                 log.error("Failed to publish envelope for channel {}: {}", channel, ex.getMessage());
             }

@@ -39,7 +39,7 @@ public class InternalController {
         UUID userUuid;
         try {
             userUuid = UUID.fromString(user);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return ResponseEntity.notFound().build();
         }
 
@@ -51,7 +51,7 @@ public class InternalController {
         long channelId;
         try {
             channelId = Long.parseLong(parts[2]);
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return ResponseEntity.notFound().build();
         }
 

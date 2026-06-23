@@ -1,6 +1,7 @@
 package io.schnappy.chat.filter;
 
 import io.schnappy.chat.security.GatewayUser;
+import io.schnappy.chat.security.UserProvisioner;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -143,6 +144,47 @@ class GatewayAuthFilterTest {
     }
 
     @Test
+    void nullSubject_doesNotAuthenticate() throws Exception {
+        when(jwtDecoder.decode(anyString())).thenReturn(
+                Jwt.withTokenValue("t").header("alg", "none").claim("email", "x@example.com").build());
+
+        filter.doFilterInternal(bearerRequest(), new MockHttpServletResponse(), filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void realmAccessWithoutRolesList_setsEmptyPermissions() throws Exception {
+        // realm_access present but `roles` absent / not a list → empty permissions.
+        when(jwtDecoder.decode(anyString())).thenReturn(
+                Jwt.withTokenValue("t").header("alg", "none")
+                        .subject(TEST_UUID.toString())
+                        .claim("email", "norole@example.com")
+                        .claim("realm_access", Map.of("notRoles", "scalar"))
+                        .build());
+        var request = bearerRequest();
+
+        filter.doFilterInternal(request, new MockHttpServletResponse(), filterChain);
+
+        GatewayUser user = (GatewayUser) request.getAttribute(GatewayUser.REQUEST_ATTRIBUTE);
+        assertThat(user).isNotNull();
+        assertThat(user.permissions()).isEmpty();
+    }
+
+    @Test
+    void sameUserWithinTtl_provisionsOnlyOnce() throws Exception {
+        when(jwtDecoder.decode(anyString())).thenReturn(jwt(TEST_UUID, "ttl@example.com", List.of("CHAT")));
+        var counting = new CountingProvisioner();
+        var ttlFilter = new GatewayAuthFilter(jwtDecoder, counting);
+
+        ttlFilter.doFilterInternal(bearerRequest(), new MockHttpServletResponse(), filterChain);
+        // Second request for the same UUID inside the TTL window hits the cache → no re-provision.
+        ttlFilter.doFilterInternal(bearerRequest(), new MockHttpServletResponse(), filterChain);
+
+        assertThat(counting.count).isEqualTo(1);
+    }
+
+    @Test
     void filterChainAlwaysProceeds() throws Exception {
         var request = new MockHttpServletRequest();
         var response = new MockHttpServletResponse();
@@ -183,5 +225,14 @@ class GatewayAuthFilterTest {
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build();
+    }
+
+    private static final class CountingProvisioner implements UserProvisioner {
+        private int count;
+
+        @Override
+        public void provisionUser(String uuid, String email, List<String> roles) {
+            count++;
+        }
     }
 }

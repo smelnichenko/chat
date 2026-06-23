@@ -2,6 +2,8 @@ package io.schnappy.chat.filter;
 
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -101,6 +103,92 @@ class InternalCallerFilterTest {
 
         assertThat(chain.getRequest()).isSameAs(request);
         assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+    }
+
+    @Test
+    void nullConfig_treatedAsDisabled_proceeds() throws Exception {
+        // null collapses to "" in the constructor → check disabled.
+        var filter = new InternalCallerFilter(null);
+        var request = internalRequest();
+        var response = new MockHttpServletResponse();
+        var chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isSameAs(request);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+    }
+
+    /**
+     * Each header value resolves to no trusted admin URI, exercising a distinct
+     * parse branch: blank header, element without a URI pair, a pair missing '='
+     * (skipped), and an all-empty comma list (no last element).
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "   ",
+            "By=spiffe://x;Hash=abc123;Subject=\"\"",
+            "bareflag;Hash=abc123",
+            " , , "
+    })
+    void xfccWithNoTrustedUri_forbidden(String xfcc) throws Exception {
+        var filter = new InternalCallerFilter(ADMIN);
+        var request = internalRequest();
+        request.addHeader(XFCC_HEADER, xfcc);
+        var response = new MockHttpServletResponse();
+        var chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        assertThat(chain.getRequest()).isNull();
+    }
+
+    @Test
+    void unquotedUriMatches_proceeds() throws Exception {
+        // URI value carries no surrounding quotes → unquote returns it verbatim and it matches.
+        var filter = new InternalCallerFilter(ADMIN);
+        var request = internalRequest();
+        request.addHeader(XFCC_HEADER, "By=spiffe://x;Hash=abc123;URI=" + ADMIN);
+        var response = new MockHttpServletResponse();
+        var chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isSameAs(request);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+    }
+
+    @Test
+    void quotedUriMatches_proceeds() throws Exception {
+        // Quoted URI value is unwrapped before comparison.
+        var filter = new InternalCallerFilter(ADMIN);
+        var request = internalRequest();
+        request.addHeader(XFCC_HEADER, "By=spiffe://x;Hash=abc123;URI=\"" + ADMIN + "\"");
+        var response = new MockHttpServletResponse();
+        var chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isSameAs(request);
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+    }
+
+    @Test
+    void internalPathViaRequestUriWhenServletPathEmpty_isFiltered() throws Exception {
+        // Empty servletPath forces the requestURI fallback in shouldNotFilter; the
+        // /internal/ prefix still triggers the caller check (here: missing XFCC → 403).
+        var filter = new InternalCallerFilter(ADMIN);
+        var request = new MockHttpServletRequest("GET", "/internal/membership");
+        request.setServletPath("");
+        request.setRequestURI("/internal/membership");
+        var response = new MockHttpServletResponse();
+        var chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+        assertThat(chain.getRequest()).isNull();
     }
 
     private static MockHttpServletRequest internalRequest() {
