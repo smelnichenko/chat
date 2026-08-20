@@ -124,7 +124,10 @@ pitest {
     mutators = ['DEFAULTS']
     timeoutConstInMillis = 10000
     verbose = false
-    features = ['-FSPRING']
+    // No `features = ['-FSPRING']`. That disables a feature contributed by the ARCMUTATE Spring
+    // plugin, which is commercial and is not on this project's classpath — and PITest rejects an
+    // unknown feature name FATALLY rather than ignoring it. With the line present, `./gradlew
+    // pitest` died in 8 seconds with "Unknown feature FSPRING" before mutating a single class.
 }
 
 sonar {
