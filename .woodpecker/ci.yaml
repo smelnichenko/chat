@@ -1,9 +1,10 @@
 # CI: Run tests on push to non-main branches
 
+# ONE run per change: the pull request's. Excluding main from the push trigger stopped the merge
+# commit building twice, but every push to a branch that HAS an open PR still fired both pipelines -
+# two identical runs of the same sha, racing for the same agent. Nothing lands here without a PR, so
+# the PR run is the gate; deployment is untouched, cd.yaml still runs on push.
 when:
-  - event: push
-    branch:
-      exclude: main
   - event: pull_request
 
 clone:
