@@ -1,5 +1,5 @@
 # Build stage
-FROM eclipse-temurin:25-jdk AS builder
+FROM eclipse-temurin:25.0.4_7-jdk AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY src src
 RUN ./gradlew bootJar --no-daemon -x test
 
 # Runtime stage
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:25.0.4_7-jre
 
 WORKDIR /app
 

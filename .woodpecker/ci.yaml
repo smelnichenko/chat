@@ -16,7 +16,7 @@ clone:
 
 steps:
   - name: test
-    image: eclipse-temurin:25-jdk
+    image: eclipse-temurin:25.0.4_7-jdk
     depends_on: []
     environment:
       SPRING_PROFILES_ACTIVE: test
@@ -38,7 +38,7 @@ steps:
               env: NEXUS_URL
 
   - name: sonar
-    image: eclipse-temurin:25-jdk
+    image: eclipse-temurin:25.0.4_7-jdk
     depends_on: [test]
     commands:
       - '[ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ] || { echo "Skipping SonarQube (no token or URL)"; exit 0; }'
