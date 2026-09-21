@@ -11,8 +11,16 @@ steps:
     volumes:
       - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
     environment:
-      GRADLE_USER_HOME: /cache/gradle/chat
     commands:
+      # One Gradle home per CONCURRENT build. Sharing one deadlocks: every step is
+      # its own PID namespace, so the lock file reads 'held by PID 50' while the
+      # contender IS PID 50, and the protocol that asks an owner to release cannot
+      # cross the namespace — it waits out the timeout and fails. A slot is a
+      # directory only one build can occupy: per PULL REQUEST here, main for cd,
+      # its own for each cron. Stale PR homes are pruned after a week.
+      - export GRADLE_USER_HOME=/cache/gradle/chat/pitest
+      - mkdir -p "$GRADLE_USER_HOME"
+      - find /cache/gradle/chat -maxdepth 1 -name 'pr-*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
       - ./gradlew pitest --no-daemon
     backend_options:
       kubernetes:
