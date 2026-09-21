@@ -11,7 +11,7 @@ steps:
     volumes:
       - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
     environment:
-      GRADLE_USER_HOME: /cache/gradle
+      GRADLE_USER_HOME: /cache/gradle/chat
     commands:
       - ./gradlew pitest --no-daemon
     backend_options:
