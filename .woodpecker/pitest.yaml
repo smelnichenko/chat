@@ -20,6 +20,13 @@ steps:
       # its own for each cron. Stale PR homes are pruned after a week.
       - export GRADLE_USER_HOME=/cache/gradle/chat/pitest
       - mkdir -p "$GRADLE_USER_HOME"
+      # Stamp LAST USE. mkdir never refreshes a directory that already exists and Gradle
+      # writes deeper than this level, so a slot's own mtime would freeze at creation --
+      # and the prune below, which every step of every CONCURRENT build runs, would
+      # rm -rf a long-lived PR's Gradle home while that PR was compiling.
+      # Guarded: a slot another image created under a different UID is not ours to stamp,
+      # and a cache that only ages wrongly must not fail the build.
+      - touch "$GRADLE_USER_HOME" 2>/dev/null || true
       - find /cache/gradle/chat -maxdepth 1 -name 'pr-*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
       - ./gradlew pitest --no-daemon
     backend_options:
