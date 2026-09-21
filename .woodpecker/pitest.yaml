@@ -8,6 +8,10 @@ when:
 steps:
   - name: pitest
     image: eclipse-temurin:25.0.4_7-jdk
+    volumes:
+      - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
+    environment:
+      GRADLE_USER_HOME: /cache/gradle
     commands:
       - ./gradlew pitest --no-daemon
     backend_options:
