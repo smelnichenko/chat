@@ -10,7 +10,6 @@ steps:
     image: eclipse-temurin:25.0.4_7-jdk
     volumes:
       - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
-    environment:
     commands:
       # One Gradle home per CONCURRENT build. Sharing one deadlocks: every step is
       # its own PID namespace, so the lock file reads 'held by PID 50' while the
