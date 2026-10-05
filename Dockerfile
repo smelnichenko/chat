@@ -17,6 +17,9 @@ FROM eclipse-temurin:25.0.4_7-jre
 
 WORKDIR /app
 
+# Liquibase 4.30+ sends product-usage analytics to liquibase.com on every start unless told not to
+ENV LIQUIBASE_ANALYTICS_ENABLED=false
+
 RUN groupadd -r app && useradd -r -g app app
 
 COPY --from=builder /app/build/libs/*.jar chat.jar
