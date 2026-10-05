@@ -113,6 +113,18 @@ class KeycloakKeysConfigTest {
     }
 
     @Test
+    void withoutAJwkSetUriThereIsNoKeySourceAsBootBuildsNoDecoder() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(OAuth2ResourceServerAutoConfiguration.class))
+                .withUserConfiguration(KeycloakKeysConfig.class)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean("keycloakJwkSource");
+                    assertThat(context).doesNotHaveBean(JwtDecoder.class);
+                });
+    }
+
+    @Test
     void theSetIsRefreshedInTheBackgroundBeforeItExpires() throws KeySourceException, InterruptedException {
         // 3 s to live, refreshed 1 s ahead (Nimbus wants ahead + refresh timeout below the time to live)
         JWKSource<SecurityContext> source = KeycloakKeysConfig.refreshingKeySource(

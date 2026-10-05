@@ -6,6 +6,7 @@ import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jose.util.DefaultResourceRetriever;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.JwkSetUriJwtDecoderBuilderCustomizer;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerProperties;
 import org.springframework.context.annotation.Bean;
@@ -27,9 +28,11 @@ import java.util.stream.Collectors;
  * after a start fetched it from Keycloak (on the Pis, over TLS), and so did the first request after every expiry - one
  * request per pod every five minutes waited on Keycloak. This source refreshes the set on a schedule before it expires,
  * and {@link StartupWarmUp} fetches it before the app reports ready. Boot's decoder stays as configured (its
- * algorithms, issuer validation and type check): only its key selector is replaced, with the same algorithms.
+ * algorithms, issuer validation and type check): only its key selector is replaced, with the same algorithms. Present
+ * where Boot builds that decoder - a JWK set URI is configured.
  */
 @Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(prefix = "spring.security.oauth2.resourceserver.jwt", name = "jwk-set-uri")
 public class KeycloakKeysConfig {
 
     /** Nimbus's defaults, as Spring Security's source had them: five minutes, at most 15 s for one refresh. */
@@ -44,7 +47,7 @@ public class KeycloakKeysConfig {
     JWKSource<SecurityContext> keycloakJwkSource(OAuth2ResourceServerProperties properties)
             throws MalformedURLException {
         String jwkSetUri = properties.getJwt().getJwkSetUri();
-        Assert.state(jwkSetUri != null, "spring.security.oauth2.resourceserver.jwt.jwk-set-uri is not set");
+        Assert.hasText(jwkSetUri, "spring.security.oauth2.resourceserver.jwt.jwk-set-uri is empty");
         return refreshingKeySource(URI.create(jwkSetUri).toURL(), CACHE_TTL, REFRESH_TIMEOUT, REFRESH_AHEAD);
     }
 

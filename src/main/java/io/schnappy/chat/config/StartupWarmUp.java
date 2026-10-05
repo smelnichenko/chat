@@ -8,6 +8,7 @@ import com.nimbusds.jose.proc.SecurityContext;
 import io.schnappy.chat.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.dao.DataAccessException;
@@ -32,7 +33,8 @@ public class StartupWarmUp implements ApplicationRunner {
     /** No one: a user without channels, so the channel listing reads and writes nothing. */
     static final UUID NO_USER = new UUID(0, 0);
 
-    private final JWKSource<SecurityContext> keycloakJwkSource;
+    /** None where no JWK set URI is configured (Boot builds no decoder from one there either). */
+    private final ObjectProvider<JWKSource<SecurityContext>> keycloakJwkSource;
     private final ChatService chatService;
 
     @Override
@@ -42,8 +44,12 @@ public class StartupWarmUp implements ApplicationRunner {
     }
 
     private void warmKeys() {
+        JWKSource<SecurityContext> source = keycloakJwkSource.getIfAvailable();
+        if (source == null) {
+            return;
+        }
         try {
-            int keys = keycloakJwkSource.get(new JWKSelector(new JWKMatcher.Builder().build()), null).size();
+            int keys = source.get(new JWKSelector(new JWKMatcher.Builder().build()), null).size();
             log.info("Keycloak signing keys fetched before readiness: {}", keys);
         } catch (KeySourceException e) {
             log.warn("Keycloak signing keys not fetched at startup ({}) - the first authenticated request fetches them",

@@ -5,7 +5,9 @@ import com.nimbusds.jose.jwk.JWKSelector;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import io.schnappy.chat.service.ChatService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.dao.DataAccessResourceFailureException;
 
@@ -28,7 +30,14 @@ class StartupWarmUpTest {
     @SuppressWarnings("unchecked")
     private final JWKSource<SecurityContext> keys = mock(JWKSource.class);
     private final ChatService chatService = mock(ChatService.class);
-    private final StartupWarmUp warmUp = new StartupWarmUp(keys, chatService);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<JWKSource<SecurityContext>> keySource = mock(ObjectProvider.class);
+    private final StartupWarmUp warmUp = new StartupWarmUp(keySource, chatService);
+
+    @BeforeEach
+    void aKeySource() {
+        when(keySource.getIfAvailable()).thenReturn(keys);
+    }
 
     @Test
     void fetchesTheKeysAndRunsTheChannelListingForNoOne() throws KeySourceException {
@@ -58,5 +67,14 @@ class StartupWarmUpTest {
         var args = new DefaultApplicationArguments();
 
         assertThatCode(() -> warmUp.run(args)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void withoutAKeySourceTheQueriesStillRun() {
+        when(keySource.getIfAvailable()).thenReturn(null);
+        var args = new DefaultApplicationArguments();
+
+        assertThatCode(() -> warmUp.run(args)).doesNotThrowAnyException();
+        verify(chatService).getAllChannelsWithMembership(StartupWarmUp.NO_USER);
     }
 }
