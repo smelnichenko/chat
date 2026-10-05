@@ -65,6 +65,8 @@ dependencies {
 test {
     useJUnitPlatform()
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    // no Liquibase usage analytics from test runs either (it phones liquibase.com unless told not to)
+    environment 'LIQUIBASE_ANALYTICS_ENABLED', 'false'
     finalizedBy jacocoTestReport
 }
 
