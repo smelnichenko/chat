@@ -48,8 +48,8 @@ steps:
     backend_options:
       kubernetes:
         resources:
-          requests: { cpu: 500m, memory: 2Gi }
-          limits: { cpu: 2000m, memory: 4Gi }
+          requests: { memory: 2Gi }
+          limits: { memory: 4Gi }
         secrets:
           - name: woodpecker-ci-secrets
             key: nexus_url
