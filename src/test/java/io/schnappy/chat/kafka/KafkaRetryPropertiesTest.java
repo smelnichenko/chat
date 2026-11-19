@@ -60,4 +60,21 @@ class KafkaRetryPropertiesTest {
         // a store restart (CNPG's primary: a minute or two) is well inside; the record is not held for ever
         assertThat(waits.stream().mapToLong(Long::longValue).sum()).isBetween(870_000L, 930_000L);
     }
+
+    @Test
+    void theStoresBackOff_theSameWaits_neverStopping() {
+        // a store away waits as long as it is away: the same waits, capped at 30 s, no 15 min end
+        BackOffExecution execution = new Binder(new MapConfigurationPropertySource())
+                .bindOrCreate("chat.kafka.retry", KafkaRetryProperties.class).unboundedBackOff().start();
+
+        List<Long> waits = new ArrayList<>();
+        for (int i = 0; i < 10_000; i++) {
+            waits.add(execution.nextBackOff());
+        }
+
+        assertThat(waits)
+                .startsWith(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L)
+                .doesNotContain(BackOffExecution.STOP)
+                .allMatch(w -> w <= 30_000L);
+    }
 }
