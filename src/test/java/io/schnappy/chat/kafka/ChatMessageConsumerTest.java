@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -83,4 +84,22 @@ class ChatMessageConsumerTest {
                 .hasMessageContaining("ScyllaDB down");
     }
 
+    @Test
+    void persistMessage_parentIdNotAUuid_throwsInvalid_andStoresNothing() {
+        var message = ChatMessageDto.builder()
+                .messageId(UUID.randomUUID().toString())
+                .channelId(1L)
+                .userUuid(USER_UUID)
+                .username("alice")
+                .content("Reply to nothing")
+                .parentMessageId("not-a-message-id")
+                .createdAt(Instant.now())
+                .build();
+
+        assertThatThrownBy(() -> chatMessageConsumer.persistMessage(message))
+                .isInstanceOf(InvalidChatMessageException.class)
+                .hasMessage("a reply to a parent id that is not one: not-a-message-id")
+                .hasCauseInstanceOf(IllegalArgumentException.class);
+        verify(messageRepository, never()).saveMessage(any(), any());
+    }
 }
