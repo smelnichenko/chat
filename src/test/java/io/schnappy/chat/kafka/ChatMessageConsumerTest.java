@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -63,6 +64,60 @@ class ChatMessageConsumerTest {
         chatMessageConsumer.persistMessage(message);
 
         verify(messageRepository).saveMessage(eq(message), isNull());
+    }
+
+    @Test
+    void validate_aMessageAsTheProducersSendIt_accepted() {
+        Instant now = Instant.parse("2026-11-19T12:00:00Z");
+        var message = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(now.minusSeconds(30))
+                .build();
+
+        assertThatCode(() -> ChatMessageConsumer.validate(message, now)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void validate_noIdOrNotAUuid_refused() {
+        Instant now = Instant.parse("2026-11-19T12:00:00Z");
+        var noId = ChatMessageDto.builder().createdAt(now).build();
+        var notAUuid = ChatMessageDto.builder().messageId("m-1").createdAt(now).build();
+
+        assertThatThrownBy(() -> ChatMessageConsumer.validate(noId, now)).isInstanceOf(InvalidChatMessageException.class);
+        assertThatThrownBy(() -> ChatMessageConsumer.validate(notAUuid, now))
+                .isInstanceOf(InvalidChatMessageException.class).hasMessageContaining("m-1");
+    }
+
+    @Test
+    void validate_noTime_refused() {
+        var message = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).build();
+        Instant now = Instant.now();
+
+        assertThatThrownBy(() -> ChatMessageConsumer.validate(message, now))
+                .isInstanceOf(InvalidChatMessageException.class).hasMessageContaining("without its time");
+    }
+
+    @Test
+    void validate_aTimeFarAhead_orBeforeAnyMessage_refused() {
+        // ahead, it would be the floor of every later message's row id in the channel - frozen, out of today's history
+        Instant now = Instant.parse("2026-11-19T12:00:00Z");
+        var ahead = ChatMessageDto.builder().messageId(UUID.randomUUID().toString())
+                .createdAt(now.plus(ChatMessageConsumer.MAX_AHEAD).plusSeconds(1)).build();
+        var early = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(Instant.EPOCH).build();
+        var justAhead = ChatMessageDto.builder().messageId(UUID.randomUUID().toString())
+                .createdAt(now.plus(ChatMessageConsumer.MAX_AHEAD)).build();
+
+        assertThatThrownBy(() -> ChatMessageConsumer.validate(ahead, now))
+                .isInstanceOf(InvalidChatMessageException.class).hasMessageContaining("out of bounds");
+        assertThatThrownBy(() -> ChatMessageConsumer.validate(early, now)).isInstanceOf(InvalidChatMessageException.class);
+        assertThatCode(() -> ChatMessageConsumer.validate(justAhead, now)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void persistMessage_anInvalidMessage_nothingSaved() {
+        var message = ChatMessageDto.builder().messageId("m-1").createdAt(Instant.now()).channelId(1L).build();
+
+        assertThatThrownBy(() -> chatMessageConsumer.persistMessage(message))
+                .isInstanceOf(InvalidChatMessageException.class);
+        verify(messageRepository, never()).saveMessage(any(), any());
     }
 
     @Test
