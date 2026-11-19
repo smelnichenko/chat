@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -45,13 +46,13 @@ class UserEventConsumerTest {
     @Test
     void handleUserEvent_nullType_doesNothing() {
         userEventConsumer.handleUserEvent(Map.of());
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     @Test
     void handleUserEvent_unknownType_ignoresQuietly() {
         userEventConsumer.handleUserEvent(Map.of("type", "SOMETHING_UNKNOWN"));
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- USER_REGISTERED ---
@@ -72,7 +73,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     @Test
@@ -83,7 +84,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- USER_ENABLED / USER_DISABLED ---
@@ -120,7 +121,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- PROFILE_UPDATED ---
@@ -140,7 +141,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- ADMIN_GRANTED ---
@@ -160,7 +161,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).addAdminUser(any(UUID.class));
+        verify(userCacheService, never()).addAdminUser(any());
         verify(systemChannelService, never()).syncAdminChannelMembers();
     }
 
@@ -180,7 +181,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).removeAdminUser(any(UUID.class));
+        verify(userCacheService, never()).removeAdminUser(any());
     }
 
     // --- EMAIL_VERIFIED ---
@@ -292,7 +293,7 @@ class UserEventConsumerTest {
                 "email", "carol@example.com", "decidedBy", "admin"));
 
         verify(systemChannelService).postSystemMessage(eq(5L), contains("carol@example.com"), isNull());
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     @Test
@@ -347,7 +348,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     private static Long eq(Long value) {
