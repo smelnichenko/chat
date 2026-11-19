@@ -101,20 +101,28 @@ public class UserEventConsumer {
         postAdminNotice("New user verified: " + (email != null ? email : USER_PREFIX + uuid));
     }
 
+    /**
+     * The admin channel told of an approval. Admin's event names the registration (approvalId, email) - no user exists
+     * yet, so it carries no uuid: the notice is posted for the email, and the user cached only when a uuid is there
+     * (its USER_CREATED caches it too). Before, no uuid returned at once: no approval was ever announced.
+     */
     private void handleRegistrationApproved(Map<String, Object> event) {
         UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        if (uuid == null) return;
+        if (uuid == null && email == null) return;
 
-        userCacheService.cacheUser(uuid, email != null ? email : "unknown", true);
+        if (uuid != null) {
+            userCacheService.cacheUser(uuid, email != null ? email : "unknown", true);
+        }
 
         postAdminNotice("Registration approved: " + (email != null ? email : USER_PREFIX + uuid));
     }
 
+    /** The admin channel told of a declined registration - named by its email (admin's event carries no uuid). */
     private void handleRegistrationDeclined(Map<String, Object> event) {
         UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
-        if (uuid == null) return;
+        if (uuid == null && email == null) return;
 
         postAdminNotice("Registration declined: " + (email != null ? email : USER_PREFIX + uuid));
     }

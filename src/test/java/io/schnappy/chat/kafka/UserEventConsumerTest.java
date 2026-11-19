@@ -18,11 +18,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,13 +46,13 @@ class UserEventConsumerTest {
     @Test
     void handleUserEvent_nullType_doesNothing() {
         userEventConsumer.handleUserEvent(Map.of());
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     @Test
     void handleUserEvent_unknownType_ignoresQuietly() {
         userEventConsumer.handleUserEvent(Map.of("type", "SOMETHING_UNKNOWN"));
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- USER_REGISTERED ---
@@ -71,7 +73,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     @Test
@@ -82,7 +84,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- USER_ENABLED / USER_DISABLED ---
@@ -119,7 +121,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- PROFILE_UPDATED ---
@@ -139,7 +141,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     // --- ADMIN_GRANTED ---
@@ -159,7 +161,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).addAdminUser(any(UUID.class));
+        verify(userCacheService, never()).addAdminUser(any());
         verify(systemChannelService, never()).syncAdminChannelMembers();
     }
 
@@ -179,7 +181,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).removeAdminUser(any(UUID.class));
+        verify(userCacheService, never()).removeAdminUser(any());
     }
 
     // --- EMAIL_VERIFIED ---
@@ -280,7 +282,40 @@ class UserEventConsumerTest {
                 .isInstanceOf(DataAccessResourceFailureException.class);
     }
 
+    @Test
+    void handleUserEvent_registrationApproved_asAdminSendsIt_noUuid_postsTheNotice_cachesNoOne() {
+        // admin's event: the registration's approvalId and email, no uuid (no user exists yet)
+        var adminChannel = new Channel();
+        adminChannel.setId(5L);
+        when(systemChannelService.getOrCreateAdminChannel()).thenReturn(adminChannel);
+
+        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "approvalId", 42L,
+                "email", "carol@example.com", "decidedBy", "admin"));
+
+        verify(systemChannelService).postSystemMessage(eq(5L), contains("carol@example.com"), isNull());
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void handleUserEvent_registrationApproved_neitherUuidNorEmail_nothing() {
+        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "approvalId", 42L));
+
+        verifyNoInteractions(systemChannelService, userCacheService);
+    }
+
     // --- REGISTRATION_DECLINED ---
+
+    @Test
+    void handleUserEvent_registrationDeclined_asAdminSendsIt_noUuid_postsTheNotice() {
+        var adminChannel = new Channel();
+        adminChannel.setId(5L);
+        when(systemChannelService.getOrCreateAdminChannel()).thenReturn(adminChannel);
+
+        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_DECLINED", "approvalId", 43L,
+                "email", "dave@example.com", "decidedBy", "ai", "reason", "Disposable email"));
+
+        verify(systemChannelService).postSystemMessage(eq(5L), contains("dave@example.com"), isNull());
+    }
 
     @Test
     void handleUserEvent_registrationDeclined_postsSystemMessage() {
@@ -313,7 +348,7 @@ class UserEventConsumerTest {
 
         userEventConsumer.handleUserEvent(event);
 
-        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
     private static Long eq(Long value) {
