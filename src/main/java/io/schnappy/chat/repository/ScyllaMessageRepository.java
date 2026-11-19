@@ -101,12 +101,22 @@ public class ScyllaMessageRepository {
         );
     }
 
+    /**
+     * The message into the history - the same row on every try: its id and bucket come from the message itself
+     * ({@link #rowId}, its createdAt), so a retry after a write that half landed, or landed and timed out, overwrites
+     * what it wrote instead of storing the message a second time. A retry after its last write (the chain head moved
+     * to it already) writes nothing: chained again, it would be chained to itself.
+     */
     public UUID saveMessage(ChatMessageDto msg, UUID parentMessageId) {
-        UUID messageId = Uuids.timeBased();
-        String bucket = LocalDate.now(ZoneOffset.UTC).toString();
+        UUID messageId = rowId(msg);
+        String bucket = msg.getCreatedAt() != null ? bucketForDate(msg.getCreatedAt()) : LocalDate.now(ZoneOffset.UTC).toString();
         long channelId = msg.getChannelId();
 
-        String prevHash = getChannelChainHead(channelId);
+        var head = session.execute(getChainHead.bind(channelId)).one();
+        if (head != null && messageId.equals(head.getUuid(COL_MESSAGE_ID))) {
+            return messageId;
+        }
+        String prevHash = head != null ? head.getString(COL_HASH) : "0";
         String hash = computeMessageHash(prevHash, channelId, msg.getUserUuid(), messageId, msg.getContent());
 
         session.execute(insertByChannel.bind(
@@ -123,6 +133,29 @@ public class ScyllaMessageRepository {
         session.execute(upsertChainHead.bind(channelId, hash, messageId));
 
         return messageId;
+    }
+
+    /**
+     * A message's row id: a time-based UUID whose time is the producer's (createdAt) and whose other bits are the
+     * producer's own message id (a random UUID) - the same on every try, and as unique as that id. A message without
+     * them gets a fresh time-based one, as before.
+     */
+    static UUID rowId(ChatMessageDto msg) {
+        UUID source = null;
+        if (msg.getMessageId() != null) {
+            try {
+                source = UUID.fromString(msg.getMessageId());
+            } catch (IllegalArgumentException _) {
+                // not the producer's random UUID: no id to make the row's from
+            }
+        }
+        if (source == null || msg.getCreatedAt() == null) {
+            return Uuids.timeBased();
+        }
+        long msb = Uuids.startOf(msg.getCreatedAt().toEpochMilli()).getMostSignificantBits();
+        // the IETF variant (10xx) over the source's own random bits
+        long lsb = (source.getLeastSignificantBits() & 0x3FFF_FFFF_FFFF_FFFFL) | 0x8000_0000_0000_0000L;
+        return new UUID(msb, lsb);
     }
 
     public String getChannelChainHead(long channelId) {

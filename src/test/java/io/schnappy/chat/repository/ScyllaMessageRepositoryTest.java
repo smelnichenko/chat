@@ -23,7 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -142,6 +144,37 @@ class ScyllaMessageRepositoryTest {
         assertThat(er.createdAt()).isEqualTo(now);
     }
 
+    @Test
+    void rowId_theSameOnEveryTry_timeBased_atTheProducersTime() {
+        Instant created = Instant.parse("2026-11-19T12:34:56.789Z");
+        var msg = ChatMessageDto.builder().messageId("6f9619ff-8b86-4011-a6b0-f2c0f1c0d2e3").createdAt(created).build();
+
+        UUID id = ScyllaMessageRepository.rowId(msg);
+
+        assertThat(ScyllaMessageRepository.rowId(msg)).as("a retry's id").isEqualTo(id);
+        assertThat(id.version()).isEqualTo(1);
+        assertThat(id.variant()).isEqualTo(2);
+        assertThat(Uuids.unixTimestamp(id)).isEqualTo(created.toEpochMilli());
+    }
+
+    @Test
+    void rowId_twoMessagesInOneMillisecond_twoIds() {
+        Instant created = Instant.parse("2026-11-19T12:34:56.789Z");
+        var a = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(created).build();
+        var b = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(created).build();
+
+        assertThat(ScyllaMessageRepository.rowId(a)).isNotEqualTo(ScyllaMessageRepository.rowId(b));
+    }
+
+    @Test
+    void rowId_noProducerIdOrTime_aFreshOne() {
+        var noId = ChatMessageDto.builder().createdAt(Instant.now()).build();
+        var notAUuid = ChatMessageDto.builder().messageId("m-1").createdAt(Instant.now()).build();
+
+        assertThat(ScyllaMessageRepository.rowId(noId)).isNotEqualTo(ScyllaMessageRepository.rowId(noId));
+        assertThat(ScyllaMessageRepository.rowId(notAUuid).version()).isEqualTo(1);
+    }
+
     // --- Instance method tests (mock CqlSession) ---
 
     @Nested
@@ -185,7 +218,7 @@ class ScyllaMessageRepositoryTest {
             when(session.execute(any(BoundStatement.class))).thenReturn(noChainHead);
             var repo = new ScyllaMessageRepository(session);
             UUID parent = UUID.randomUUID();
-            var msg = ChatMessageDto.builder()
+            var msg = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(Instant.now())
                     .channelId(1L).userUuid(USER_UUID).username("alice").content("a reply").build();
 
             repo.saveMessage(msg, parent);
@@ -196,6 +229,50 @@ class ScyllaMessageRepositoryTest {
             assertThat(bound).isEqualTo(parent.toString());
             assertThat(CodecRegistry.DEFAULT.codecFor(DataTypes.TEXT, bound).getJavaType())
                     .isEqualTo(GenericType.STRING);
+        }
+
+        @Test
+        void saveMessage_aRetryAfterItsLastWrite_writesNothing() {
+            // the chain head points at this message already: it was stored whole - chained again, to itself
+            var session = mock(CqlSession.class);
+            var preparedStmt = mock(PreparedStatement.class);
+            var boundStmt = mock(BoundStatement.class);
+            when(session.prepare(anyString())).thenReturn(preparedStmt);
+            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
+            var msg = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(Instant.now())
+                    .channelId(1L).userUuid(USER_UUID).username("alice").content("Hello").build();
+            var head = mock(Row.class);
+            when(head.getUuid("message_id")).thenReturn(ScyllaMessageRepository.rowId(msg));
+            var rs = mock(ResultSet.class);
+            when(rs.one()).thenReturn(head);
+            when(session.execute(any(BoundStatement.class))).thenReturn(rs);
+            var repo = new ScyllaMessageRepository(session);
+
+            assertThat(repo.saveMessage(msg, null)).isEqualTo(ScyllaMessageRepository.rowId(msg));
+            verify(session, times(1)).execute(any(BoundStatement.class));  // the head's read, nothing written
+        }
+
+        @Test
+        void saveMessage_theBucketOfTheMessagesDay_notTheWritesDay() {
+            // a retry past midnight UTC writes the row it wrote before, in the bucket of the day the message was sent
+            var session = mock(CqlSession.class);
+            var preparedStmt = mock(PreparedStatement.class);
+            var boundStmt = mock(BoundStatement.class);
+            when(session.prepare(anyString())).thenReturn(preparedStmt);
+            when(preparedStmt.bind(any(Object[].class))).thenReturn(boundStmt);
+            var rs = mock(ResultSet.class);
+            when(rs.one()).thenReturn(null);
+            when(session.execute(any(BoundStatement.class))).thenReturn(rs);
+            var repo = new ScyllaMessageRepository(session);
+            var msg = ChatMessageDto.builder().messageId(UUID.randomUUID().toString())
+                    .createdAt(Instant.parse("2026-03-20T23:59:59Z"))
+                    .channelId(1L).userUuid(USER_UUID).username("alice").content("Hello").build();
+
+            repo.saveMessage(msg, null);
+
+            ArgumentCaptor<Object[]> bound = ArgumentCaptor.forClass(Object[].class);
+            verify(preparedStmt, atLeastOnce()).bind(bound.capture());
+            assertThat(bound.getAllValues()).anySatisfy(values -> assertThat(values).contains("2026-03-20"));
         }
 
         @Test
