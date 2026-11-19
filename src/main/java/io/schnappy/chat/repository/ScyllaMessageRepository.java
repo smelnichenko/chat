@@ -8,6 +8,7 @@ import io.schnappy.chat.dto.ChatMessageDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -24,6 +25,8 @@ import java.util.UUID;
 @Repository
 public class ScyllaMessageRepository {
 
+    /** 100-ns ticks from 1582-10-15 (a time-based UUID's origin) to 1970-01-01. */
+    private static final long UUID_EPOCH_TICKS = 0x01B2_1DD2_1381_4000L;
     private static final String COL_MESSAGE_ID = "message_id";
     private static final String COL_USER_UUID = "user_uuid";
     private static final String COL_USERNAME = "username";
@@ -54,8 +57,9 @@ public class ScyllaMessageRepository {
         this.session = session;
 
         this.insertByChannel = session.prepare(
-            "INSERT INTO messages_by_channel (channel_id, bucket, message_id, user_uuid, username, content, parent_message_id, edited, deleted, hash, prev_hash, key_version, message_type, metadata) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            // no edited, no deleted: a retry would undo an edit made between its tries (an unwritten one reads false)
+            "INSERT INTO messages_by_channel (channel_id, bucket, message_id, user_uuid, username, content, parent_message_id, hash, prev_hash, key_version, message_type, metadata) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
         this.insertByUser = session.prepare(
@@ -102,27 +106,36 @@ public class ScyllaMessageRepository {
     }
 
     /**
-     * The message into the history - the same row on every try: its id and bucket come from the message itself
-     * ({@link #rowId}, its createdAt), so a retry after a write that half landed, or landed and timed out, overwrites
-     * what it wrote instead of storing the message a second time. A retry after its last write (the chain head moved
-     * to it already) writes nothing: chained again, it would be chained to itself.
+     * The message into the history - the same row on every try, and the chain's order its rows' order (the order
+     * verifyChain walks):
+     * <ul>
+     *   <li>a retry after its last write (the chain head names it already) writes nothing - chained again, it would be
+     *       chained to itself;</li>
+     *   <li>a retry after a write that half landed (the row, not the head) writes that row again, the same - the head has
+     *       not moved, so its id ({@link #rowId}, made after the head), prev_hash and hash are what they were: an upsert
+     *       of itself;</li>
+     *   <li>a message delivered again once others followed it (a replay, offsets lost) is appended under a new id after
+     *       the head - a second row, the chain whole - never written over its first row, which later rows chain to.</li>
+     * </ul>
      */
     public UUID saveMessage(ChatMessageDto msg, UUID parentMessageId) {
-        UUID messageId = rowId(msg);
-        String bucket = msg.getCreatedAt() != null ? bucketForDate(msg.getCreatedAt()) : LocalDate.now(ZoneOffset.UTC).toString();
         long channelId = msg.getChannelId();
-
         var head = session.execute(getChainHead.bind(channelId)).one();
-        if (head != null && messageId.equals(head.getUuid(COL_MESSAGE_ID))) {
-            return messageId;
+        UUID headId = head != null ? head.getUuid(COL_MESSAGE_ID) : null;
+        long lsb = rowLsb(msg);
+        if (headId != null && headId.getLeastSignificantBits() == lsb) {
+            return headId;
         }
+        UUID messageId = rowId(msg, headId, lsb);
+        // the row id's own day: an edit finds the row by its id's time (getMessages, ChatService.editMessage)
+        String bucket = bucketForDate(Instant.ofEpochMilli(Uuids.unixTimestamp(messageId)));
         String prevHash = head != null ? head.getString(COL_HASH) : "0";
         String hash = computeMessageHash(prevHash, channelId, msg.getUserUuid(), messageId, msg.getContent());
 
         session.execute(insertByChannel.bind(
             channelId, bucket, messageId, msg.getUserUuid(), msg.getUsername(), msg.getContent(),
             // parent_message_id is text: a UUID bound to it has no codec (TEXT <-> UUID) and no reply was ever stored
-            parentMessageId == null ? null : parentMessageId.toString(), false, false, hash, prevHash, msg.getKeyVersion(),
+            parentMessageId == null ? null : parentMessageId.toString(), hash, prevHash, msg.getKeyVersion(),
             msg.getMessageType(), msg.getMetadata()
         ));
 
@@ -136,26 +149,36 @@ public class ScyllaMessageRepository {
     }
 
     /**
-     * A message's row id: a time-based UUID whose time is the producer's (createdAt) and whose other bits are the
-     * producer's own message id (a random UUID) - the same on every try, and as unique as that id. A message without
-     * them gets a fresh time-based one, as before.
+     * A message's row id, time-based: its time the producer's (createdAt), or one tick after the chain head's when that
+     * is later - a channel's ids rise in the order its messages are chained, whatever the producers' clocks say (two
+     * producers, a clock step, rows of the old write-time ids); its other bits {@link #rowLsb}. The head unchanged
+     * between tries, it is the same on every try.
      */
-    static UUID rowId(ChatMessageDto msg) {
-        UUID source = null;
-        if (msg.getMessageId() != null) {
-            try {
-                source = UUID.fromString(msg.getMessageId());
-            } catch (IllegalArgumentException _) {
-                // not the producer's random UUID: no id to make the row's from
-            }
+    static UUID rowId(ChatMessageDto msg, UUID head, long lsb) {
+        long millis = msg.getCreatedAt() != null ? msg.getCreatedAt().toEpochMilli() : System.currentTimeMillis();
+        long ticks = millis * 10_000 + UUID_EPOCH_TICKS;
+        if (head != null && head.version() == 1) {
+            ticks = Math.max(ticks, head.timestamp() + 1);
         }
-        if (source == null || msg.getCreatedAt() == null) {
-            return Uuids.timeBased();
-        }
-        long msb = Uuids.startOf(msg.getCreatedAt().toEpochMilli()).getMostSignificantBits();
-        // the IETF variant (10xx) over the source's own random bits
-        long lsb = (source.getLeastSignificantBits() & 0x3FFF_FFFF_FFFF_FFFFL) | 0x8000_0000_0000_0000L;
-        return new UUID(msb, lsb);
+        return new UUID(msbOf(ticks), lsb);
+    }
+
+    /** A version-1 UUID's high bits for a time in 100-ns ticks since 1582-10-15: time_low, time_mid, version, time_hi. */
+    static long msbOf(long ticks) {
+        return ((ticks & 0xFFFF_FFFFL) << 32) | (((ticks >>> 32) & 0xFFFFL) << 16) | 0x1000L | ((ticks >>> 48) & 0x0FFFL);
+    }
+
+    /**
+     * A row id's other bits: 62 of a SHA-256 of the producer's message id, under the IETF variant - the same on every
+     * try, and as unique as the whole id (a time-based producer id's own low bits are its JVM's, shared by all it makes).
+     * No producer id: random, as a fresh time-based id was.
+     */
+    static long rowLsb(ChatMessageDto msg) {
+        String id = msg.getMessageId();
+        long bits = id != null && !id.isBlank()
+                ? ByteBuffer.wrap(sha256Bytes(id)).getLong()
+                : UUID.randomUUID().getLeastSignificantBits();
+        return (bits & 0x3FFF_FFFF_FFFF_FFFFL) | 0x8000_0000_0000_0000L;
     }
 
     public String getChannelChainHead(long channelId) {
@@ -334,10 +357,12 @@ public class ScyllaMessageRepository {
     }
 
     private static String sha256(String input) {
+        return HexFormat.of().formatHex(sha256Bytes(input));
+    }
+
+    private static byte[] sha256Bytes(String input) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
+            return MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
