@@ -60,6 +60,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -387,9 +388,10 @@ class ChatMessageRetryKafkaTest {
 
     private static String message(String content, String parentMessageId) {
         String parent = parentMessageId == null ? "null" : "\"" + parentMessageId + "\"";
+        // as ChatService makes it: the producer's id and time (the history's row is made from them)
         return """
-                {"messageId":"%s","channelId":%s,"userUuid":"%s","username":"alice","content":"%s","parentMessageId":%s}"""
-                .formatted(UUID.randomUUID(), CHANNEL, UUID.randomUUID(), content, parent);
+                {"messageId":"%s","channelId":%s,"userUuid":"%s","username":"alice","content":"%s","parentMessageId":%s,"createdAt":"%s"}"""
+                .formatted(UUID.randomUUID(), CHANNEL, UUID.randomUUID(), content, parent, Instant.now());
     }
 
     private static ChatMessageDto withContent(String content) {

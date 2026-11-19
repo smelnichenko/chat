@@ -117,6 +117,10 @@ public class ScyllaMessageRepository {
      *   <li>a message delivered again once others followed it (a replay, offsets lost) is appended under a new id after
      *       the head - a second row, the chain whole - never written over its first row, which later rows chain to.</li>
      * </ul>
+     * All three rest on one writer per channel at a time - the read of the head and its write are no transaction:
+     * chat.messages is keyed by channel, its partitions fixed (12), each one consumer's (Kafka's group), ScyllaDB one
+     * replica. More partitions, a second writer, or replicas read below quorum would fork the chain (a lightweight
+     * transaction on chain_heads then).
      */
     public UUID saveMessage(ChatMessageDto msg, UUID parentMessageId) {
         long channelId = msg.getChannelId();

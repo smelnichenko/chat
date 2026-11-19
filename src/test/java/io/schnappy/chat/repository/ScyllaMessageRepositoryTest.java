@@ -421,6 +421,19 @@ class ScyllaMessageRepositoryTest {
         }
 
         @Test
+        void saveMessage_theHeadPastMidnight_theBucketTheRowIdsDay_notTheProducersDay() {
+            // the row's id is one tick after the head, on the next day: a bucket of createdAt's day would put the row
+            // where an edit (it looks by the id's day) never finds it - and its edited flag would make a ghost row
+            var store = new Store();
+            store.head(Uuids.startOf(Instant.parse("2026-03-21T00:00:00Z").toEpochMilli()), "h-midnight");
+            var msg = message(Instant.parse("2026-03-20T23:59:59Z"), "Hello");
+
+            store.repo.saveMessage(msg, null);
+
+            assertThat(store.rows().getFirst()[1]).isEqualTo("2026-03-21");
+        }
+
+        @Test
         void getChannelChainHead_noRow_returnsZero() {
             var session = mock(CqlSession.class);
             var preparedStmt = mock(PreparedStatement.class);
