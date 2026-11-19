@@ -10,10 +10,26 @@ import com.datastax.oss.driver.api.core.DriverTimeoutException;
 import com.datastax.oss.driver.api.core.NoNodeAvailableException;
 import com.datastax.oss.driver.api.core.connection.BusyConnectionException;
 import com.datastax.oss.driver.api.core.connection.ClosedConnectionException;
+import com.datastax.oss.driver.api.core.ConsistencyLevel;
+import com.datastax.oss.driver.api.core.connection.ConnectionInitException;
+import com.datastax.oss.driver.api.core.connection.HeartbeatException;
+import com.datastax.oss.driver.api.core.metadata.Node;
+import com.datastax.oss.driver.api.core.servererrors.BootstrappingException;
+import com.datastax.oss.driver.api.core.servererrors.InvalidQueryException;
+import com.datastax.oss.driver.api.core.servererrors.OverloadedException;
+import com.datastax.oss.driver.api.core.servererrors.ReadTimeoutException;
+import com.datastax.oss.driver.api.core.servererrors.SyntaxError;
+import com.datastax.oss.driver.api.core.servererrors.UnavailableException;
+import com.datastax.oss.driver.api.core.servererrors.WriteTimeoutException;
+import com.datastax.oss.driver.api.core.servererrors.WriteType;
+import com.datastax.oss.driver.api.core.type.DataTypes;
+import com.datastax.oss.driver.api.core.type.codec.CodecNotFoundException;
+import com.datastax.oss.driver.api.core.type.reflect.GenericType;
 import org.apache.kafka.common.header.Headers;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.kafka.KafkaException;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.ConsumerAwareRecordRecoverer;
@@ -21,6 +37,7 @@ import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.transaction.CannotCreateTransactionException;
 
+import java.net.InetSocketAddress;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
@@ -106,11 +123,39 @@ class KafkaErrorHandlerConfigTest {
 
     @Test
     void scyllaAway_byItsDriversExceptions_waitedFor() {
+        Node node = mock(Node.class);
         assertThat(KafkaErrorHandlerConfig.storeDown(new NoNodeAvailableException())).isTrue();
         assertThat(KafkaErrorHandlerConfig.storeDown(new DriverTimeoutException("query timed out after PT2S"))).isTrue();
         assertThat(KafkaErrorHandlerConfig.storeDown(new ClosedConnectionException("lost"))).isTrue();
         assertThat(KafkaErrorHandlerConfig.storeDown(new RuntimeException("listener failed",
                 new BusyConnectionException("too many requests in flight")))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(new ConnectionInitException("refused", null))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(
+                new HeartbeatException(InetSocketAddress.createUnresolved("scylla", 9042), "no heartbeat", null))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(new UnavailableException(node, ConsistencyLevel.ONE, 1, 0))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(
+                new ReadTimeoutException(node, ConsistencyLevel.ONE, 0, 1, false))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(
+                new WriteTimeoutException(node, ConsistencyLevel.ONE, 0, 1, WriteType.SIMPLE))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(new OverloadedException(node))).isTrue();
+        assertThat(KafkaErrorHandlerConfig.storeDown(new BootstrappingException(node))).isTrue();
+    }
+
+    @Test
+    void redisAway_waitedFor() {
+        // Redis (the user cache): Lettuce's connection failure - a DataAccessResourceFailureException's own kind
+        assertThat(KafkaErrorHandlerConfig.storeDown(new RedisConnectionFailureException("Unable to connect"))).isTrue();
+    }
+
+    @Test
+    void aDriverFailureNoWaitCures_notTheStoreAway() {
+        // a statement the server refuses, or a Java type the driver has no codec for: the same on every try - never an
+        // unbounded wait (a code bug would hold the listener for ever)
+        Node node = mock(Node.class);
+        assertThat(KafkaErrorHandlerConfig.storeDown(new InvalidQueryException(node, "unconfigured table"))).isFalse();
+        assertThat(KafkaErrorHandlerConfig.storeDown(new SyntaxError(node, "line 1:0 no viable alternative"))).isFalse();
+        assertThat(KafkaErrorHandlerConfig.storeDown(
+                new CodecNotFoundException(DataTypes.TEXT, GenericType.UUID))).isFalse();
     }
 
     @Test
@@ -130,6 +175,8 @@ class KafkaErrorHandlerConfigTest {
 
         assertThat(new String(headers.lastHeader(KafkaErrorHandlerConfig.ORIGINAL_PARTITION).value(), UTF_8)).isEqualTo("2");
         assertThat(new String(headers.lastHeader(KafkaErrorHandlerConfig.ORIGINAL_OFFSET).value(), UTF_8)).isEqualTo("7");
+        assertThat(new String(headers.lastHeader(KafkaErrorHandlerConfig.ORIGINAL_TIMESTAMP).value(), UTF_8))
+                .isEqualTo(String.valueOf(rec.timestamp()));
         assertThat(new String(headers.lastHeader(KafkaErrorHandlerConfig.EXCEPTION_MESSAGE).value(), UTF_8))
                 .as("the cause's message, its control characters and space runs one space")
                 .isEqualTo("duplicate key Detail: Key (email)=(a@b) exists");

@@ -4,9 +4,14 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.datastax.oss.driver.api.core.NoNodeAvailableException;
+import com.datastax.oss.driver.api.core.type.DataTypes;
+import com.datastax.oss.driver.api.core.type.codec.CodecNotFoundException;
+import com.datastax.oss.driver.api.core.type.reflect.GenericType;
 import io.schnappy.chat.config.KafkaConfig;
 import io.schnappy.chat.dto.ChatMessageDto;
 import io.schnappy.chat.repository.ScyllaMessageRepository;
+import io.schnappy.chat.service.SystemChannelService;
+import io.schnappy.chat.service.UserCacheService;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -20,7 +25,6 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicExistsException;
-import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
@@ -38,7 +42,10 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.listener.AbstractMessageListenerContainer;
+import org.springframework.kafka.listener.ListenerContainerRegistry;
 import org.springframework.kafka.listener.RecordInterceptor;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.kafka.support.serializer.DeserializationException;
@@ -66,7 +73,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -75,19 +84,16 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 /**
- * The chat-persistence listener against a real broker, with production's Kafka settings (application.yml) and error
- * handler (KafkaErrorHandlerConfig) - only the back-off shortened. ScyllaDB down - past the budget of any other
- * failure - costs no message; a failure no store explains past its retries, a reply to a parent id that is not one and
- * a value that is not JSON each end on chat.messages.DLT, with headers the backup can dump, each counted once, and the
- * partition moves on.
+ * Chat's two listeners against a real broker, with production's Kafka settings (application.yml) and error handler
+ * (KafkaErrorHandlerConfig) - only the back-off shortened. ScyllaDB down (chat-persistence) or Redis down (chat-user) -
+ * past the budget of any other failure - costs no record; a failure no store explains past its retries, a reply to a
+ * parent id that is not one, a value the driver has no codec for and a value that is not JSON each end on
+ * chat.messages.DLT, with headers the backup can dump, each counted once, and the partition moves on.
  */
 @SpringBootTest(
-        classes = {KafkaConfig.class, KafkaErrorHandlerConfig.class, ChatMessageConsumer.class,
+        classes = {KafkaConfig.class, KafkaErrorHandlerConfig.class, ChatMessageConsumer.class, UserEventConsumer.class,
                 ChatMessageRetryKafkaTest.Deliveries.class, SimpleMeterRegistry.class},
         properties = {
-                // a configuration naming the bare JsonDeserializer (as monitor's ConfigMap did): the handler's config
-                // must wrap it whatever the configuration says
-                "spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.JsonDeserializer",
                 // waits of 10 ms doubling to 50 ms, 600 ms of them in all - some 14 tries (production: 1 s to 30 s,
                 // 15 min). Each retry costs the embedded broker ~0.5 s of its own (a fetch after the seek), so a test
                 // timed against the back-off cannot tell it from Spring's default: the outage is counted in tries
@@ -98,9 +104,10 @@ import static org.mockito.Mockito.verify;
 // profile "local", not "test": KafkaConfig and KafkaErrorHandlerConfig run outside the test profile only, as in
 // production. It outranks CI's SPRING_PROFILES_ACTIVE, and logback's console appender shows the retries.
 @ActiveProfiles("local")
-// chat.messages of three partitions (production: 12); its .DLT made in open() with one - as the broker makes it on first
-// use: a dead letter from partition 2 must still find its place there (the handler leaves the partition to Kafka)
-@EmbeddedKafka(partitions = 3, topics = ChatMessageRetryKafkaTest.TOPIC,
+// chat.messages of three partitions (production: 12), user.events of three; chat.messages.DLT made in open() with one - as
+// the broker makes it on first use: a dead letter from partition 2 must still find its place there (the handler leaves
+// the partition to Kafka)
+@EmbeddedKafka(partitions = 3, topics = {ChatMessageRetryKafkaTest.TOPIC, ChatMessageRetryKafkaTest.USER_EVENTS},
         bootstrapServersProperty = "spring.kafka.bootstrap-servers")
 // a deserializer that fails every poll hangs the listener and fills the heap: a case fails in 90 s, the build goes on
 @Timeout(90)
@@ -110,6 +117,7 @@ class ChatMessageRetryKafkaTest {
 
     static final String TOPIC = "chat.messages";
     static final String DLT = "chat.messages.DLT";
+    static final String USER_EVENTS = "user.events";
     /** ChatKafkaProducer's key: the channel. */
     private static final String CHANNEL = "7";
     private static final Duration WAIT = Duration.ofSeconds(60);
@@ -120,6 +128,15 @@ class ChatMessageRetryKafkaTest {
 
     @MockitoBean
     private ScyllaMessageRepository messageRepository;
+
+    @MockitoBean
+    private UserCacheService userCacheService;
+
+    @MockitoBean
+    private SystemChannelService systemChannelService;
+
+    @Autowired
+    private ListenerContainerRegistry registry;
 
     @Autowired
     private EmbeddedKafkaBroker broker;
@@ -145,7 +162,7 @@ class ChatMessageRetryKafkaTest {
     /** The dead letters counted before this test - each test that makes one waits for its own count. */
     private double countedBefore;
 
-    /** How many times the listener was handed each chat.messages record (partition@offset): a retry hands it again. */
+    /** How many times a listener was handed each record (topic-partition@offset): a retry hands it again. */
     @TestComponent
     static class Deliveries implements RecordInterceptor<Object, Object> {
         private final Map<String, AtomicInteger> byRecord = new ConcurrentHashMap<>();
@@ -153,7 +170,8 @@ class ChatMessageRetryKafkaTest {
         @Override
         public ConsumerRecord<Object, Object> intercept(ConsumerRecord<Object, Object> rec,
                                                         Consumer<Object, Object> consumer) {
-            byRecord.computeIfAbsent(rec.partition() + "@" + rec.offset(), k -> new AtomicInteger()).incrementAndGet();
+            byRecord.computeIfAbsent(rec.topic() + "-" + rec.partition() + "@" + rec.offset(), k -> new AtomicInteger())
+                    .incrementAndGet();
             return rec;
         }
 
@@ -164,22 +182,23 @@ class ChatMessageRetryKafkaTest {
     }
 
     @BeforeEach
-    void open() throws Exception {
+    void open() {
         var adminConfig = Map.<String, Object>of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker.getBrokersAsString());
         try (Admin admin = Admin.create(adminConfig)) {
-            try {
-                admin.createTopics(List.of(new NewTopic(DLT, 1, (short) 1))).all().get(10, TimeUnit.SECONDS);
-            } catch (ExecutionException e) {
-                if (!(e.getCause() instanceof TopicExistsException)) {
-                    throw e;
+            // a broker just started (KRaft) may time out the create, and answer UnknownTopicOrPartition for a topic just
+            // created: both retried till it has the topic. The premise of the partition-2 case: the broker's own
+            // default (num.partitions) is three
+            await().atMost(Duration.ofSeconds(30)).ignoreExceptions().untilAsserted(() -> {
+                try {
+                    admin.createTopics(List.of(new NewTopic(DLT, 1, (short) 1))).all().get(5, TimeUnit.SECONDS);
+                } catch (ExecutionException e) {
+                    if (!(e.getCause() instanceof TopicExistsException)) {
+                        throw e;
+                    }
                 }
-            }
-            // the premise of the partition-2 case: the broker's own default (num.partitions) is three. A topic just
-            // created is not yet in the broker's metadata (KRaft answers UnknownTopicOrPartition): described till it is
-            await().atMost(Duration.ofSeconds(10))
-                    .ignoreExceptionsMatching(e -> e.getCause() instanceof UnknownTopicOrPartitionException)
-                    .untilAsserted(() -> assertThat(admin.describeTopics(List.of(DLT)).allTopicNames()
-                            .get(10, TimeUnit.SECONDS).get(DLT).partitions()).as("the .DLT of one partition").hasSize(1));
+                assertThat(admin.describeTopics(List.of(DLT)).allTopicNames().get(2, TimeUnit.SECONDS).get(DLT).partitions())
+                        .as("the .DLT of one partition").hasSize(1);
+            });
         }
         countedBefore = deadLettersCounted();
         producer = new KafkaProducer<>(Map.of(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, broker.getBrokersAsString()),
@@ -222,7 +241,9 @@ class ChatMessageRetryKafkaTest {
     void aFailureNoStoreExplains_pastItsRetries_theMessageKeptOnTheDlt_andThePartitionMovesOn() throws Exception {
         // not the store away (that waits for it, however long): a failure no wait cures, given its 15 min - here 600 ms
         String content = "gone-" + UUID.randomUUID();
-        doThrow(new IllegalStateException("a bug in the listener"))
+        // its message spans lines, as Postgres's and the driver's do: one line on the .DLT - Spring's own message
+        // header (multi-line) excluded, the backup's text
+        doThrow(new IllegalStateException("a bug in the\n  listener\tDetail: x"))
                 .when(messageRepository).saveMessage(withContent(content), any());
 
         String at = send(message(content, null));
@@ -232,7 +253,7 @@ class ChatMessageRetryKafkaTest {
         assertThat(header(dead, KafkaHeaders.DLT_ORIGINAL_TOPIC)).isEqualTo(TOPIC);
         assertThat(header(dead, KafkaHeaders.DLT_ORIGINAL_CONSUMER_GROUP)).isEqualTo("chat-persistence");
         assertThat(failure(dead)).contains(IllegalStateException.class.getName());
-        assertThat(header(dead, KafkaErrorHandlerConfig.EXCEPTION_MESSAGE)).isEqualTo("a bug in the listener");
+        assertThat(header(dead, KafkaErrorHandlerConfig.EXCEPTION_MESSAGE)).isEqualTo("a bug in the listener Detail: x");
         assertThat(deliveries.of(at)).as("retried past Spring's default ten tries before it was given up on")
                 .isGreaterThan(BOUNDED_TRIES);
         backupSafe(dead);
@@ -257,18 +278,64 @@ class ChatMessageRetryKafkaTest {
     }
 
     @Test
+    void aValueTheDriverHasNoCodecFor_keptOnTheDltAtOnce() throws Exception {
+        // a column's type and the bound Java type apart (a reply's parent bound as a UUID to a text column was one):
+        // the same on every try - not 15 min of the listener held, every channel of its partitions with it
+        String content = "codec-" + UUID.randomUUID();
+        doThrow(new CodecNotFoundException(DataTypes.TEXT, GenericType.UUID))
+                .when(messageRepository).saveMessage(withContent(content), any());
+
+        String at = send(message(content, null));
+
+        ConsumerRecord<String, byte[]> dead = deadLetter(content);
+        assertThat(failure(dead)).contains(CodecNotFoundException.class.getName());
+        assertThat(deliveries.of(at)).as("never retried").isEqualTo(1);
+        backupSafe(dead);
+        countedOnce();
+    }
+
+    @Test
+    void userEvents_redisDownForAWhile_theUserCachedOnceItIsBack() throws Exception {
+        // chat-user, the other listener: the same handler, its store (Redis) waited for however long it is away
+        UUID uuid = UUID.randomUUID();
+        AtomicInteger tries = new AtomicInteger();
+        AtomicInteger cached = new AtomicInteger();
+        doAnswer(inv -> {
+            if (tries.incrementAndGet() <= FAILED_TRIES) {
+                throw new RedisConnectionFailureException("Unable to connect to Redis");
+            }
+            cached.incrementAndGet();
+            return null;
+        }).when(userCacheService).cacheUser(eq(uuid), anyString(), eq(true));
+
+        String at = sendUserEvent("""
+                {"type":"USER_ENABLED","uuid":"%s","email":"back@example.com"}""".formatted(uuid));
+
+        await().atMost(WAIT).untilAsserted(() -> assertThat(cached).hasValue(1));
+        assertThat(tries).hasValue(FAILED_TRIES + 1);
+        assertThat(deliveries.of(at)).as("cached on the try after the failed ones").isEqualTo(FAILED_TRIES + 1);
+    }
+
+    @Test
     void wiredAsInProduction_theHandlerThere_noTestProfile() {
-        // CI runs with SPRING_PROFILES_ACTIVE=test,ci, and KafkaConfig and the handler run outside the test profile
+        // CI runs with SPRING_PROFILES_ACTIVE=test, and KafkaConfig and the handler run outside the test profile
         // only: this class's own profile must win, or every case below waits out its timeout for no listener
         assertThat(environment.getActiveProfiles()).contains("local").doesNotContain("test", "ci");
         assertThat(context.containsBean("kafkaErrorHandler")).isTrue();
-        // the bare JsonDeserializer named above (as the deployment's ConfigMap names it), wrapped all the same
+        // application.yml's ErrorHandlingDeserializer and its JsonDeserializer delegate, as production reads them
         assertThat(consumerFactory.getConfigurationProperties())
                 .containsEntry(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class)
                 .containsKey(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS);
-        // both counters at 0 from the start, before any dead letter: the alert reads their increase
-        assertThat(meters.find(KafkaErrorHandlerConfig.DEAD_LETTERS).tag("topic", TOPIC).counter()).isNotNull();
-        assertThat(meters.find(KafkaErrorHandlerConfig.DEAD_LETTERS_REFUSED).tag("topic", TOPIC).counter()).isNotNull();
+        // both listeners' containers hold the one handler (Boot sets it on the default factory)
+        Object handler = context.getBean("kafkaErrorHandler");
+        assertThat(registry.getListenerContainers()).hasSize(2).allSatisfy(container ->
+                assertThat(((AbstractMessageListenerContainer<?, ?>) container).getCommonErrorHandler()).isSameAs(handler));
+        // both counters at 0 from the start, for both listeners' topics, before any dead letter: the alert reads
+        // their increase
+        for (String topic : List.of(TOPIC, USER_EVENTS)) {
+            assertThat(meters.find(KafkaErrorHandlerConfig.DEAD_LETTERS).tag("topic", topic).counter()).isNotNull();
+            assertThat(meters.find(KafkaErrorHandlerConfig.DEAD_LETTERS_REFUSED).tag("topic", topic).counter()).isNotNull();
+        }
     }
 
     @Test
@@ -287,7 +354,7 @@ class ChatMessageRetryKafkaTest {
         backupSafe(dead);
         verify(messageRepository, timeout(WAIT.toMillis())).saveMessage(withContent(next), isNull());
         countedOnce();
-        // no partition asked for: Spring's same-partition default would name user.events.DLT-2, which its recoverer
+        // no partition asked for: Spring's same-partition default would name chat.messages.DLT-2, which its recoverer
         // checks and replaces with Kafka's choice - logged per dead letter
         assertThat(output.getAll()).doesNotContain("non-existent partition");
     }
@@ -302,7 +369,20 @@ class ChatMessageRetryKafkaTest {
         var rec = new ProducerRecord<>(TOPIC, partition, CHANNEL, value.getBytes(UTF_8));
         rec.headers().add("__TypeId__", ChatMessageDto.class.getName().getBytes(UTF_8));
         RecordMetadata sent = producer.send(rec).get(10, TimeUnit.SECONDS);
-        return sent.partition() + "@" + sent.offset();
+        return TOPIC + "-" + sent.partition() + "@" + sent.offset();
+    }
+
+    /**
+     * A user event as admin sends it: the type headers Spring's JsonSerializer writes for a HashMap (a container: its
+     * own class, its content's and its key's - JsonDeserializer refuses a map without the last two).
+     */
+    private String sendUserEvent(String value) throws Exception {
+        var rec = new ProducerRecord<>(USER_EVENTS, null, "USER_ENABLED", value.getBytes(UTF_8));
+        rec.headers().add("__TypeId__", "java.util.HashMap".getBytes(UTF_8));
+        rec.headers().add("__ContentTypeId__", "java.lang.Object".getBytes(UTF_8));
+        rec.headers().add("__KeyTypeId__", "java.lang.Object".getBytes(UTF_8));
+        RecordMetadata sent = producer.send(rec).get(10, TimeUnit.SECONDS);
+        return USER_EVENTS + "-" + sent.partition() + "@" + sent.offset();
     }
 
     private static String message(String content, String parentMessageId) {
@@ -348,7 +428,7 @@ class ChatMessageRetryKafkaTest {
         await().atMost(WAIT).untilAsserted(() -> assertThat(deadLettersCounted()).isEqualTo(countedBefore + 1));
     }
 
-    /** kafka_dead_letters_total{topic="user.events"}, what the KafkaDeadLetters alert reads. */
+    /** kafka_dead_letters_total{topic="chat.messages"}, what the KafkaDeadLetters alert reads. */
     private double deadLettersCounted() {
         Counter counter = meters.find(KafkaErrorHandlerConfig.DEAD_LETTERS).tag("topic", TOPIC).counter();
         return counter == null ? 0 : counter.count();

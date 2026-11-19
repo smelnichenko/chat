@@ -10,7 +10,9 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:monitor_chat}
+    # socketTimeout (s): a read lost with its connection fails instead of holding the thread (a Kafka listener held
+    # there is seen by no alert)
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:monitor_chat}?socketTimeout=300
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:}
   jpa:

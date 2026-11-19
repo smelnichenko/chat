@@ -1,6 +1,7 @@
 package io.schnappy.chat.kafka;
 
 import io.schnappy.chat.entity.Channel;
+import io.schnappy.chat.service.NoAdminUsersException;
 import io.schnappy.chat.service.SystemChannelService;
 import io.schnappy.chat.service.UserCacheService;
 import org.junit.jupiter.api.Test;
@@ -8,12 +9,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -209,12 +212,23 @@ class UserEventConsumerTest {
     }
 
     @Test
-    void handleUserEvent_emailVerified_systemChannelThrows_doesNotPropagate() {
-        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new RuntimeException("no admins"));
+    void handleUserEvent_emailVerified_storeFailing_propagatesForTheRetry() {
+        // Postgres away: the error handler retries the record - swallowed, the notice was lost and the offset committed
+        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new DataAccessResourceFailureException("db down"));
+        Map<String, Object> event = Map.of("type", "EMAIL_VERIFIED", "uuid", USER_UUID.toString(), "email", "alice@example.com");
 
-        assertThatCode(() ->
-                userEventConsumer.handleUserEvent(Map.of("type", "EMAIL_VERIFIED", "uuid", USER_UUID.toString(), "email", "alice@example.com"))
-        ).doesNotThrowAnyException();
+        assertThatThrownBy(() -> userEventConsumer.handleUserEvent(event))
+                .isInstanceOf(DataAccessResourceFailureException.class);
+    }
+
+    @Test
+    void handleUserEvent_emailVerified_noAdminYet_skipped() {
+        // no admin, no admin channel to make: nothing a retry cures - skipped, not held
+        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new NoAdminUsersException());
+        Map<String, Object> event = Map.of("type", "EMAIL_VERIFIED", "uuid", USER_UUID.toString(), "email", "alice@example.com");
+
+        assertThatCode(() -> userEventConsumer.handleUserEvent(event)).doesNotThrowAnyException();
+        verify(systemChannelService, never()).postSystemMessage(any(), anyString(), any());
     }
 
     @Test
@@ -258,12 +272,12 @@ class UserEventConsumerTest {
     }
 
     @Test
-    void handleUserEvent_registrationApproved_systemChannelThrows_doesNotPropagate() {
-        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new RuntimeException("db down"));
+    void handleUserEvent_registrationApproved_storeFailing_propagatesForTheRetry() {
+        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new DataAccessResourceFailureException("db down"));
+        Map<String, Object> event = Map.of("type", "REGISTRATION_APPROVED", "uuid", USER_UUID.toString(), "email", "alice@example.com");
 
-        assertThatCode(() ->
-                userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "uuid", USER_UUID.toString(), "email", "alice@example.com"))
-        ).doesNotThrowAnyException();
+        assertThatThrownBy(() -> userEventConsumer.handleUserEvent(event))
+                .isInstanceOf(DataAccessResourceFailureException.class);
     }
 
     // --- REGISTRATION_DECLINED ---
@@ -280,12 +294,12 @@ class UserEventConsumerTest {
     }
 
     @Test
-    void handleUserEvent_registrationDeclined_systemChannelThrows_doesNotPropagate() {
-        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new RuntimeException("db down"));
+    void handleUserEvent_registrationDeclined_noAdminYet_skipped() {
+        when(systemChannelService.getOrCreateAdminChannel()).thenThrow(new NoAdminUsersException());
+        Map<String, Object> event = Map.of("type", "REGISTRATION_DECLINED", "uuid", USER_UUID.toString(), "email", "bob@example.com");
 
-        assertThatCode(() ->
-                userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_DECLINED", "uuid", USER_UUID.toString(), "email", "bob@example.com"))
-        ).doesNotThrowAnyException();
+        assertThatCode(() -> userEventConsumer.handleUserEvent(event)).doesNotThrowAnyException();
+        verify(systemChannelService, never()).postSystemMessage(any(), anyString(), any());
     }
 
     // --- invalid uuid ---

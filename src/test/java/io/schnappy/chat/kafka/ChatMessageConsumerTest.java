@@ -49,6 +49,23 @@ class ChatMessageConsumerTest {
     }
 
     @Test
+    void persistMessage_aBlankParent_noParent() {
+        var message = ChatMessageDto.builder()
+                .messageId(UUID.randomUUID().toString())
+                .channelId(1L)
+                .userUuid(USER_UUID)
+                .username("alice")
+                .content("Not a reply")
+                .parentMessageId(" ")
+                .createdAt(Instant.now())
+                .build();
+
+        chatMessageConsumer.persistMessage(message);
+
+        verify(messageRepository).saveMessage(eq(message), isNull());
+    }
+
+    @Test
     void persistMessage_savesMessageWithParentId() {
         UUID parentId = UUID.randomUUID();
         var message = ChatMessageDto.builder()

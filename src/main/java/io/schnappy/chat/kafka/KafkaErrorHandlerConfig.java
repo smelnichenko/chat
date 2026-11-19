@@ -13,6 +13,7 @@ import com.datastax.oss.driver.api.core.servererrors.OverloadedException;
 import com.datastax.oss.driver.api.core.servererrors.ReadTimeoutException;
 import com.datastax.oss.driver.api.core.servererrors.UnavailableException;
 import com.datastax.oss.driver.api.core.servererrors.WriteTimeoutException;
+import com.datastax.oss.driver.api.core.type.codec.CodecNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -96,7 +97,8 @@ public class KafkaErrorHandlerConfig {
         deadLetters.addHeadersFunction(KafkaErrorHandlerConfig::textHeaders);
         var handler = new DefaultErrorHandler(recoverer(deadLetters, meters), retry.backOff());
         handler.setBackOffFunction((rec, ex) -> storeDown(ex) ? retry.unboundedBackOff() : null);
-        handler.addNotRetryableExceptions(InvalidChatMessageException.class);
+        // a value the driver has no codec for (a column's type and the bound Java type apart): a code bug no wait cures
+        handler.addNotRetryableExceptions(InvalidChatMessageException.class, CodecNotFoundException.class);
         return handler;
     }
 
@@ -142,8 +144,9 @@ public class KafkaErrorHandlerConfig {
     /**
      * The value deserializer wrapped in an ErrorHandlingDeserializer, whatever the configuration names: a value that is
      * not JSON then fails in the wrapper, not in the poll - the handler keeps it on the .DLT and the partition moves
-     * on. A poll that fails is no record the handler can recover: the listener polls that offset for ever. The
-     * deployment's own application.yml (a ConfigMap read after the image's) named the bare JsonDeserializer.
+     * on. A poll that fails is no record the handler can recover: the listener polls that offset for ever. Chat's
+     * application.yml names the wrapper already; this keeps it so if a deployment's configuration names the bare
+     * JsonDeserializer (monitor's ConfigMap did).
      */
     @Bean
     DefaultKafkaConsumerFactoryCustomizer valueDeserializerWrapped() {

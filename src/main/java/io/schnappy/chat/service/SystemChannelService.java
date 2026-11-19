@@ -41,7 +41,7 @@ public class SystemChannelService {
     private Channel createAdminChannel() {
         Set<UUID> adminUserUuids = userCacheService.getAdminUserUuids();
         if (adminUserUuids.isEmpty()) {
-            throw new IllegalStateException("No admin users found to create system channel");
+            throw new NoAdminUsersException();
         }
         UUID creatorUuid = adminUserUuids.iterator().next();
 
