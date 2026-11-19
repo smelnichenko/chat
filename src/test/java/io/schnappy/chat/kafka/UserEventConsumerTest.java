@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -280,7 +281,40 @@ class UserEventConsumerTest {
                 .isInstanceOf(DataAccessResourceFailureException.class);
     }
 
+    @Test
+    void handleUserEvent_registrationApproved_asAdminSendsIt_noUuid_postsTheNotice_cachesNoOne() {
+        // admin's event: the registration's approvalId and email, no uuid (no user exists yet)
+        var adminChannel = new Channel();
+        adminChannel.setId(5L);
+        when(systemChannelService.getOrCreateAdminChannel()).thenReturn(adminChannel);
+
+        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "approvalId", 42L,
+                "email", "carol@example.com", "decidedBy", "admin"));
+
+        verify(systemChannelService).postSystemMessage(eq(5L), contains("carol@example.com"), isNull());
+        verify(userCacheService, never()).cacheUser(any(UUID.class), anyString(), any(Boolean.class));
+    }
+
+    @Test
+    void handleUserEvent_registrationApproved_neitherUuidNorEmail_nothing() {
+        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_APPROVED", "approvalId", 42L));
+
+        verifyNoInteractions(systemChannelService, userCacheService);
+    }
+
     // --- REGISTRATION_DECLINED ---
+
+    @Test
+    void handleUserEvent_registrationDeclined_asAdminSendsIt_noUuid_postsTheNotice() {
+        var adminChannel = new Channel();
+        adminChannel.setId(5L);
+        when(systemChannelService.getOrCreateAdminChannel()).thenReturn(adminChannel);
+
+        userEventConsumer.handleUserEvent(Map.of("type", "REGISTRATION_DECLINED", "approvalId", 43L,
+                "email", "dave@example.com", "decidedBy", "ai", "reason", "Disposable email"));
+
+        verify(systemChannelService).postSystemMessage(eq(5L), contains("dave@example.com"), isNull());
+    }
 
     @Test
     void handleUserEvent_registrationDeclined_postsSystemMessage() {
