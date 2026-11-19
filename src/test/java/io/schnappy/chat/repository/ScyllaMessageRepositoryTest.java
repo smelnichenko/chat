@@ -253,6 +253,33 @@ class ScyllaMessageRepositoryTest {
         }
 
         @Test
+        void saveMessage_aRetryAfterAHalfWrite_theSameRowAgain() {
+            // the row landed, the chain head did not (ScyllaDB gone between them): the retry writes that row again -
+            // the same id, prev_hash and hash, an upsert of itself - and no second message
+            var session = mock(CqlSession.class);
+            var anyStmt = mock(PreparedStatement.class);
+            var byChannel = mock(PreparedStatement.class);
+            var boundStmt = mock(BoundStatement.class);
+            when(session.prepare(anyString())).thenReturn(anyStmt);
+            when(session.prepare(startsWith("INSERT INTO messages_by_channel "))).thenReturn(byChannel);
+            when(anyStmt.bind(any(Object[].class))).thenReturn(boundStmt);
+            when(byChannel.bind(any(Object[].class))).thenReturn(boundStmt);
+            var noChainHead = mock(ResultSet.class);
+            when(session.execute(any(BoundStatement.class))).thenReturn(noChainHead);
+            var repo = new ScyllaMessageRepository(session);
+            var msg = ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).createdAt(Instant.now())
+                    .channelId(1L).userUuid(USER_UUID).username("alice").content("Hello").build();
+
+            UUID first = repo.saveMessage(msg, null);
+            UUID retry = repo.saveMessage(msg, null);
+
+            assertThat(retry).isEqualTo(first);
+            ArgumentCaptor<Object[]> rows = ArgumentCaptor.forClass(Object[].class);
+            verify(byChannel, times(2)).bind(rows.capture());
+            assertThat(rows.getAllValues().get(1)).containsExactly(rows.getAllValues().get(0));
+        }
+
+        @Test
         void saveMessage_theBucketOfTheMessagesDay_notTheWritesDay() {
             // a retry past midnight UTC writes the row it wrote before, in the bucket of the day the message was sent
             var session = mock(CqlSession.class);
