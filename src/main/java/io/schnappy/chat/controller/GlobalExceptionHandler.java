@@ -1,5 +1,6 @@
 package io.schnappy.chat.controller;
 
+import io.schnappy.chat.kafka.MessageNotSentException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -52,6 +53,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleNoResourceFound(NoResourceFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of(ERROR_KEY, "Not found"));
+    }
+
+    /** The message did not reach chat.messages: try again - nothing of it was stored. */
+    @ExceptionHandler(MessageNotSentException.class)
+    public ResponseEntity<Map<String, String>> handleMessageNotSent(MessageNotSentException ex) {
+        log.warn("{}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of(ERROR_KEY, "Message not sent, try again"));
     }
 
     @ExceptionHandler(Exception.class)

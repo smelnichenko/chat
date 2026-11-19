@@ -52,6 +52,12 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # a send comes to its end within 15 s - taken or refused - and the sender waits for it (ChatKafkaProducer): the
+      # producer's defaults (two minutes to deliver, one to block on metadata) held a request that long
+      properties:
+        delivery.timeout.ms: 15000
+        request.timeout.ms: 10000
+        max.block.ms: 10000
 
 springdoc:
   api-docs:
