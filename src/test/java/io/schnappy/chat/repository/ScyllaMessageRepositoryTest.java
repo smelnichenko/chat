@@ -181,7 +181,8 @@ class ScyllaMessageRepositoryTest {
             when(session.prepare(startsWith("INSERT INTO messages_by_channel "))).thenReturn(byChannel);
             when(anyStmt.bind(any(Object[].class))).thenReturn(boundStmt);
             when(byChannel.bind(any(Object[].class))).thenReturn(boundStmt);
-            when(session.execute(any(BoundStatement.class))).thenReturn(mock(ResultSet.class));
+            var noChainHead = mock(ResultSet.class);
+            when(session.execute(any(BoundStatement.class))).thenReturn(noChainHead);
             var repo = new ScyllaMessageRepository(session);
             UUID parent = UUID.randomUUID();
             var msg = ChatMessageDto.builder()

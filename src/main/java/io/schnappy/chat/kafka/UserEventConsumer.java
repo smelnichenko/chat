@@ -128,7 +128,7 @@ public class UserEventConsumer {
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
             systemChannelService.postSystemMessage(channel.getId(), text, null);
-        } catch (NoAdminUsersException e) {
+        } catch (NoAdminUsersException _) {
             log.warn("Admin notice not posted, no admin channel without an admin: {}", text);
         }
     }

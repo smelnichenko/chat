@@ -97,7 +97,8 @@ public class KafkaErrorHandlerConfig {
         deadLetters.addHeadersFunction(KafkaErrorHandlerConfig::textHeaders);
         var handler = new DefaultErrorHandler(recoverer(deadLetters, meters), retry.backOff());
         handler.setBackOffFunction((rec, ex) -> storeDown(ex) ? retry.unboundedBackOff() : null);
-        // a value the driver has no codec for (a column's type and the bound Java type apart): a code bug no wait cures
+        // never retried: a reply naming no message, and a value the driver has no codec for - a column's type and the
+        // Java type bound to it apart, a code bug no wait cures
         handler.addNotRetryableExceptions(InvalidChatMessageException.class, CodecNotFoundException.class);
         return handler;
     }
