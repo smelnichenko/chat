@@ -2,11 +2,15 @@ package io.schnappy.chat.kafka;
 
 import io.schnappy.chat.dto.ChatMessageDto;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
@@ -61,9 +65,16 @@ class ChatKafkaProducerTest {
     }
 
     @Test
-    void theWait_outlastsTheProducersDeliveryTimeout() {
-        // application.yml's delivery.timeout.ms (15 s): the send has ended, taken or refused, before the caller is told
-        assertThat(ChatKafkaProducer.SEND_WAIT).isGreaterThan(Duration.ofSeconds(15));
+    void theWait_outlastsTheProducersDeliveryTimeout_asApplicationYmlSetsIt() {
+        // the send has ended, taken or refused, before the caller is told - a later delivery would be a message both
+        // failed and stored
+        var yaml = new YamlPropertiesFactoryBean();
+        yaml.setResources(new ClassPathResource("application.yml"));
+        Properties config = Objects.requireNonNull(yaml.getObject());
+        Duration delivery = Duration.ofMillis(Long.parseLong(
+                config.getProperty("spring.kafka.producer.properties.delivery.timeout.ms")));
+
+        assertThat(delivery).isLessThan(ChatKafkaProducer.SEND_WAIT);
     }
 
     private static ChatMessageDto message(long channelId) {
