@@ -32,7 +32,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
-import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
@@ -40,6 +39,7 @@ import org.springframework.kafka.listener.ConsumerAwareRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer.HeaderNames.HeadersToAdd;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.ListenerContainerRegistry;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.transaction.CannotCreateTransactionException;
 
@@ -162,7 +162,7 @@ public class KafkaErrorHandlerConfig {
      * series made at its first count would hide.
      */
     @Bean
-    ApplicationListener<ApplicationStartedEvent> deadLetterCountersAtZero(KafkaListenerEndpointRegistry registry,
+    ApplicationListener<ApplicationStartedEvent> deadLetterCountersAtZero(ListenerContainerRegistry registry,
                                                                          MeterRegistry meters) {
         return event -> registry.getListenerContainers().forEach(container -> {
             String[] topics = container.getContainerProperties().getTopics();
