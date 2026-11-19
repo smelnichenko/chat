@@ -1,5 +1,6 @@
 package io.schnappy.chat.controller;
 
+import io.schnappy.chat.kafka.MessageNotSentException;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -62,6 +63,17 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).containsEntry("error", "Bad state");
+    }
+
+    @Test
+    void handleMessageNotSent_returns503_tryAgain() {
+        // the message never reached chat.messages: the sender is told to try again, not shown a 201
+        var ex = new MessageNotSentException("m-1", new IllegalStateException("Kafka unavailable"));
+
+        var response = handler.handleMessageNotSent(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).containsEntry("error", "Message not sent, try again");
     }
 
     @Test

@@ -2,99 +2,72 @@ package io.schnappy.chat.kafka;
 
 import io.schnappy.chat.dto.ChatMessageDto;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
-
 import org.springframework.kafka.support.SendResult;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+/**
+ * A chat message's send is waited for: the broker took it, or the caller fails (the request a 503, a listener's record
+ * retried) - never logged and lost behind a 201.
+ */
 class ChatKafkaProducerTest {
 
-    @Mock
-    private KafkaTemplate<String, ChatMessageDto> kafkaTemplate;
-
-    @InjectMocks
-    private ChatKafkaProducer chatKafkaProducer;
+    @SuppressWarnings("unchecked")
+    private final KafkaTemplate<String, ChatMessageDto> kafkaTemplate = mock(KafkaTemplate.class);
+    private final ChatKafkaProducer producer = new ChatKafkaProducer(kafkaTemplate, Duration.ofMillis(200));
 
     @Test
-    void sendMessage_sendsToCorrectTopicWithChannelIdAsKey() {
-        var message = ChatMessageDto.builder()
-                .messageId("msg-1")
-                .channelId(42L)
-                .userUuid(UUID.randomUUID())
-                .username("alice")
-                .content("Hello")
-                .createdAt(Instant.now())
-                .build();
+    void sendMessage_taken_toItsTopic_keyedByItsChannel() {
+        var message = message(42L);
+        when(kafkaTemplate.send("chat.messages", "42", message)).thenReturn(CompletableFuture.completedFuture(null));
 
-        when(kafkaTemplate.send("chat.messages", "42", message))
-                .thenReturn(new CompletableFuture<>());
-
-        chatKafkaProducer.sendMessage(message);
+        assertThatCode(() -> producer.sendMessage(message)).doesNotThrowAnyException();
 
         verify(kafkaTemplate).send("chat.messages", "42", message);
     }
 
     @Test
-    void sendMessage_differentChannelId_usesCorrectKey() {
-        var message = ChatMessageDto.builder()
-                .messageId("msg-2")
-                .channelId(7L)
-                .content("Test")
-                .build();
+    void sendMessage_refused_theCallerFails() {
+        var message = message(5L);
+        var refused = new CompletableFuture<SendResult<String, ChatMessageDto>>();
+        refused.completeExceptionally(new IllegalStateException("Kafka unavailable"));
+        when(kafkaTemplate.send("chat.messages", "5", message)).thenReturn(refused);
 
-        when(kafkaTemplate.send("chat.messages", "7", message))
-                .thenReturn(new CompletableFuture<>());
-
-        chatKafkaProducer.sendMessage(message);
-
-        verify(kafkaTemplate).send("chat.messages", "7", message);
+        assertThatThrownBy(() -> producer.sendMessage(message))
+                .isInstanceOf(MessageNotSentException.class)
+                .hasMessageContaining(message.getMessageId()).hasMessageContaining("Kafka unavailable")
+                .hasCauseInstanceOf(IllegalStateException.class);
     }
 
     @Test
-    void sendMessage_kafkaFailure_logsError() {
-        var message = ChatMessageDto.builder()
-                .messageId("msg-3")
-                .channelId(5L)
-                .content("Fail")
-                .build();
+    void sendMessage_noAnswerInItsWait_theCallerFails() {
+        var message = message(7L);
+        when(kafkaTemplate.send("chat.messages", "7", message)).thenReturn(new CompletableFuture<>());
 
-        var future = new CompletableFuture<SendResult<String, ChatMessageDto>>();
-        when(kafkaTemplate.send("chat.messages", "5", message)).thenReturn(future);
-
-        chatKafkaProducer.sendMessage(message);
-
-        // Complete exceptionally to trigger the error callback
-        future.completeExceptionally(new RuntimeException("Kafka unavailable"));
-
-        verify(kafkaTemplate).send("chat.messages", "5", message);
+        assertThatThrownBy(() -> producer.sendMessage(message))
+                .isInstanceOf(MessageNotSentException.class).hasCauseInstanceOf(TimeoutException.class);
     }
 
     @Test
-    void sendMessage_kafkaSuccess_noError() {
-        var message = ChatMessageDto.builder()
-                .messageId("msg-4")
-                .channelId(3L)
-                .content("OK")
-                .build();
+    void theWait_outlastsTheProducersDeliveryTimeout() {
+        // application.yml's delivery.timeout.ms (15 s): the send has ended, taken or refused, before the caller is told
+        assertThat(ChatKafkaProducer.SEND_WAIT).isGreaterThan(Duration.ofSeconds(15));
+    }
 
-        var future = new CompletableFuture<SendResult<String, ChatMessageDto>>();
-        when(kafkaTemplate.send("chat.messages", "3", message)).thenReturn(future);
-
-        chatKafkaProducer.sendMessage(message);
-
-        future.complete(null);
-
-        verify(kafkaTemplate).send("chat.messages", "3", message);
+    private static ChatMessageDto message(long channelId) {
+        return ChatMessageDto.builder().messageId(UUID.randomUUID().toString()).channelId(channelId)
+                .userUuid(UUID.randomUUID()).username("alice").content("Hello").createdAt(Instant.now()).build();
     }
 }
