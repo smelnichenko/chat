@@ -222,9 +222,9 @@ public class ScyllaMessageRepository {
     public record EditRecord(String editId, UUID userUuid, String content, String hash, Instant createdAt) {}
 
     public List<ChatMessageDto> getMessages(long channelId, String bucket, UUID beforeMessageId, int limit) {
-        var rs = (beforeMessageId != null)
-            ? session.execute(selectByChannelBefore.bind(channelId, bucket, beforeMessageId, limit))
-            : session.execute(selectByChannel.bind(channelId, bucket, limit));
+        var rs = session.execute(beforeMessageId != null
+            ? selectByChannelBefore.bind(channelId, bucket, beforeMessageId, limit)
+            : selectByChannel.bind(channelId, bucket, limit));
 
         List<ChatMessageDto> messages = new ArrayList<>();
         for (Row row : rs) {
