@@ -1,5 +1,6 @@
 package io.schnappy.chat.kafka;
 
+import io.schnappy.chat.service.NoAdminUsersException;
 import io.schnappy.chat.service.SystemChannelService;
 import io.schnappy.chat.service.UserCacheService;
 import lombok.RequiredArgsConstructor;
@@ -97,14 +98,7 @@ public class UserEventConsumer {
         String email = (String) event.get(EVENT_EMAIL);
         if (uuid == null) return;
 
-        try {
-            var channel = systemChannelService.getOrCreateAdminChannel();
-            systemChannelService.postSystemMessage(channel.getId(),
-                "New user verified: " + (email != null ? email : USER_PREFIX + uuid),
-                null);
-        } catch (RuntimeException e) {
-            log.warn("Failed to post email verification notification: {}", e.getMessage());
-        }
+        postAdminNotice("New user verified: " + (email != null ? email : USER_PREFIX + uuid));
     }
 
     private void handleRegistrationApproved(Map<String, Object> event) {
@@ -114,14 +108,7 @@ public class UserEventConsumer {
 
         userCacheService.cacheUser(uuid, email != null ? email : "unknown", true);
 
-        try {
-            var channel = systemChannelService.getOrCreateAdminChannel();
-            systemChannelService.postSystemMessage(channel.getId(),
-                "Registration approved: " + (email != null ? email : USER_PREFIX + uuid),
-                null);
-        } catch (RuntimeException e) {
-            log.warn("Failed to post approval notification: {}", e.getMessage());
-        }
+        postAdminNotice("Registration approved: " + (email != null ? email : USER_PREFIX + uuid));
     }
 
     private void handleRegistrationDeclined(Map<String, Object> event) {
@@ -129,13 +116,20 @@ public class UserEventConsumer {
         String email = (String) event.get(EVENT_EMAIL);
         if (uuid == null) return;
 
+        postAdminNotice("Registration declined: " + (email != null ? email : USER_PREFIX + uuid));
+    }
+
+    /**
+     * A notice into the admin channel. A store failing propagates - the error handler retries it (the store away: for as
+     * long as it is away), never committing past it; no admin yet (no channel to make) is no failure a retry cures:
+     * skipped, said.
+     */
+    private void postAdminNotice(String text) {
         try {
             var channel = systemChannelService.getOrCreateAdminChannel();
-            systemChannelService.postSystemMessage(channel.getId(),
-                "Registration declined: " + (email != null ? email : USER_PREFIX + uuid),
-                null);
-        } catch (RuntimeException e) {
-            log.warn("Failed to post decline notification: {}", e.getMessage());
+            systemChannelService.postSystemMessage(channel.getId(), text, null);
+        } catch (NoAdminUsersException _) {
+            log.warn("Admin notice not posted, no admin channel without an admin: {}", text);
         }
     }
 

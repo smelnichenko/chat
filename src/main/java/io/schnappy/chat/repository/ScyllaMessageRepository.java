@@ -111,7 +111,8 @@ public class ScyllaMessageRepository {
 
         session.execute(insertByChannel.bind(
             channelId, bucket, messageId, msg.getUserUuid(), msg.getUsername(), msg.getContent(),
-            parentMessageId, false, false, hash, prevHash, msg.getKeyVersion(),
+            // parent_message_id is text: a UUID bound to it has no codec (TEXT <-> UUID) and no reply was ever stored
+            parentMessageId == null ? null : parentMessageId.toString(), false, false, hash, prevHash, msg.getKeyVersion(),
             msg.getMessageType(), msg.getMetadata()
         ));
 

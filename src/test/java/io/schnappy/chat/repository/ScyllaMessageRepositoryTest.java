@@ -5,10 +5,14 @@ import com.datastax.oss.driver.api.core.cql.BoundStatement;
 import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
+import com.datastax.oss.driver.api.core.type.DataTypes;
+import com.datastax.oss.driver.api.core.type.codec.registry.CodecRegistry;
+import com.datastax.oss.driver.api.core.type.reflect.GenericType;
 import com.datastax.oss.driver.api.core.uuid.Uuids;
 import io.schnappy.chat.dto.ChatMessageDto;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -18,6 +22,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -161,6 +166,36 @@ class ScyllaMessageRepositoryTest {
             UUID messageId = repo.saveMessage(msg, null);
 
             assertThat(messageId).isNotNull();
+        }
+
+        @Test
+        void saveMessage_aReply_itsParentBoundAsTheTextColumnIs() {
+            // parent_message_id is text: a UUID bound there has no codec in the driver (CodecNotFoundException
+            // [TEXT <-> java.util.UUID]) and the reply was never stored - a mocked bind takes any type, so the bound
+            // value is put to the driver's own codec registry
+            var session = mock(CqlSession.class);
+            var anyStmt = mock(PreparedStatement.class);
+            var byChannel = mock(PreparedStatement.class);
+            var boundStmt = mock(BoundStatement.class);
+            when(session.prepare(anyString())).thenReturn(anyStmt);
+            when(session.prepare(startsWith("INSERT INTO messages_by_channel "))).thenReturn(byChannel);
+            when(anyStmt.bind(any(Object[].class))).thenReturn(boundStmt);
+            when(byChannel.bind(any(Object[].class))).thenReturn(boundStmt);
+            var noChainHead = mock(ResultSet.class);
+            when(session.execute(any(BoundStatement.class))).thenReturn(noChainHead);
+            var repo = new ScyllaMessageRepository(session);
+            UUID parent = UUID.randomUUID();
+            var msg = ChatMessageDto.builder()
+                    .channelId(1L).userUuid(USER_UUID).username("alice").content("a reply").build();
+
+            repo.saveMessage(msg, parent);
+
+            ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
+            verify(byChannel).bind(args.capture());
+            Object bound = args.getValue()[6];
+            assertThat(bound).isEqualTo(parent.toString());
+            assertThat(CodecRegistry.DEFAULT.codecFor(DataTypes.TEXT, bound).getJavaType())
+                    .isEqualTo(GenericType.STRING);
         }
 
         @Test

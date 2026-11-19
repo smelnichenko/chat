@@ -58,6 +58,9 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // an in-process broker for the chat-persistence listener's retry and dead-letter test (no Docker in CI)
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testImplementation 'org.awaitility:awaitility'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.0'
 }
@@ -125,6 +128,8 @@ pitest {
     addJUnitPlatformLauncher = false
     targetClasses = ['io.schnappy.chat.**']
     excludedClasses = ['**Config', '**Dto', '**Properties', '**Application']
+    // a broker and a Spring context per run: ChatMessageConsumer's mutants are ChatMessageConsumerTest's to kill
+    excludedTestClasses = ['io.schnappy.chat.kafka.ChatMessageRetryKafkaTest']
     threads = 4
     outputFormats = ['XML', 'HTML']
     timestampedReports = false
