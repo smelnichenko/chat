@@ -173,8 +173,4 @@ class UserEventConsumerTest {
 
         verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
-
-    private static Long eq(Long value) {
-        return org.mockito.ArgumentMatchers.eq(value);
-    }
 }
