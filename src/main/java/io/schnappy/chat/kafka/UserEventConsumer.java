@@ -33,9 +33,7 @@ public class UserEventConsumer {
 
         switch (type) {
             case "USER_CREATED" -> handleUserCreated(event);
-            case "USER_REGISTERED" -> handleUserRegistered(event);
             case "USER_ENABLED", "USER_DISABLED" -> handleUserEnabledChanged(event);
-            case "PROFILE_UPDATED" -> handleProfileUpdated(event);
             default -> log.debug("Ignoring user event type: {}", type);
         }
     }
@@ -55,15 +53,6 @@ public class UserEventConsumer {
         log.info("Cached user from admin: {} ({}) enabled={}", uuid, email, enabled);
     }
 
-    private void handleUserRegistered(Map<String, Object> event) {
-        UUID uuid = toUuid(event.get(EVENT_UUID));
-        String email = (String) event.get(EVENT_EMAIL);
-        if (uuid == null || email == null) return;
-
-        userCacheService.cacheUser(uuid, email, true);
-        log.info("Cached new user: {} ({})", uuid, email);
-    }
-
     private void handleUserEnabledChanged(Map<String, Object> event) {
         UUID uuid = toUuid(event.get(EVENT_UUID));
         String email = (String) event.get(EVENT_EMAIL);
@@ -72,14 +61,6 @@ public class UserEventConsumer {
 
         userCacheService.cacheUser(uuid, email != null ? email : "unknown", enabled);
         log.info("User {} {}", uuid, enabled ? "enabled" : "disabled");
-    }
-
-    private void handleProfileUpdated(Map<String, Object> event) {
-        UUID uuid = toUuid(event.get(EVENT_UUID));
-        String email = (String) event.get(EVENT_EMAIL);
-        if (uuid == null || email == null) return;
-
-        userCacheService.cacheUser(uuid, email, true);
     }
 
     private UUID toUuid(Object value) {

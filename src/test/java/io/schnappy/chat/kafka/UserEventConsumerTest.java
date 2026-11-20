@@ -24,7 +24,6 @@ class UserEventConsumerTest {
     @Mock
     private UserCacheService userCacheService;
 
-
     @InjectMocks
     private UserEventConsumer userEventConsumer;
 
@@ -41,8 +40,6 @@ class UserEventConsumerTest {
         userEventConsumer.handleUserEvent(Map.of("type", "SOMETHING_UNKNOWN"));
         verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
-
-    // --- USER_REGISTERED ---
 
     @Test
     void handleUserEvent_userCreated_asAdminSendsIt_cachedWithItsEnabled() {
@@ -64,36 +61,6 @@ class UserEventConsumerTest {
     @Test
     void handleUserEvent_userCreated_noUuid_nothingCached() {
         userEventConsumer.handleUserEvent(Map.of("type", "USER_CREATED", "email", "x@example.com", "enabled", true));
-
-        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
-    }
-
-    @Test
-    void handleUserEvent_userRegistered_cachesUser() {
-        userEventConsumer.handleUserEvent(Map.of("type", "USER_REGISTERED", "uuid", USER_UUID.toString(), "email", "alice@example.com"));
-
-        verify(userCacheService).cacheUser(USER_UUID, "alice@example.com", true);
-    }
-
-    @Test
-    void handleUserEvent_userRegistered_missingEmail_doesNothing() {
-        Map<String, Object> event = new HashMap<>();
-        event.put("type", "USER_REGISTERED");
-        event.put("uuid", USER_UUID.toString());
-        // no email
-
-        userEventConsumer.handleUserEvent(event);
-
-        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
-    }
-
-    @Test
-    void handleUserEvent_userRegistered_missingUuid_doesNothing() {
-        Map<String, Object> event = new HashMap<>();
-        event.put("type", "USER_REGISTERED");
-        event.put("email", "alice@example.com");
-
-        userEventConsumer.handleUserEvent(event);
 
         verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
@@ -135,37 +102,12 @@ class UserEventConsumerTest {
         verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
     }
 
-    // --- PROFILE_UPDATED ---
-
-    @Test
-    void handleUserEvent_profileUpdated_cachesUser() {
-        userEventConsumer.handleUserEvent(Map.of("type", "PROFILE_UPDATED", "uuid", USER_UUID.toString(), "email", "new@example.com"));
-
-        verify(userCacheService).cacheUser(USER_UUID, "new@example.com", true);
-    }
-
-    @Test
-    void handleUserEvent_profileUpdated_missingEmail_doesNothing() {
-        Map<String, Object> event = new HashMap<>();
-        event.put("type", "PROFILE_UPDATED");
-        event.put("uuid", USER_UUID.toString());
-
-        userEventConsumer.handleUserEvent(event);
-
-        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
-    }
-
-
-
-
-
-
     // --- invalid uuid ---
 
     @Test
     void handleUserEvent_invalidUuidString_doesNothing() {
         Map<String, Object> event = new HashMap<>();
-        event.put("type", "USER_REGISTERED");
+        event.put("type", "USER_CREATED");
         event.put("uuid", "not-a-uuid");
         event.put("email", "alice@example.com");
 
