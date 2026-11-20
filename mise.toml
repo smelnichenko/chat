@@ -1,0 +1,5 @@
+# The JDK this repo builds with on the workstation (mise - https://mise.jdx.dev: `mise install` once, then every
+# cd here picks it): the major its CI images run (eclipse-temurin), moved with them and the Gradle toolchain by
+# Renovate (ops renovate/apps.json, group java). A major alone - Adoptium's build numbers are not mise's.
+[tools]
+java = "temurin-25"
