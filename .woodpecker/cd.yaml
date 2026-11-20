@@ -1,6 +1,6 @@
-# CD: Test + Build + Push on push to main
-# Builds chat service image and pushes to Forgejo registry
-# Deployment is handled by the monitor repo's CD pipeline
+# CD: Test + Build + Push + Deploy on push to main
+# Builds the chat image, pushes it to the Forgejo registry, and points test at it (update-infra: ci-deploy chat test);
+# production follows by ops' task promote:run.
 
 when:
   - branch: main
