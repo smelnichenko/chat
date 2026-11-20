@@ -58,6 +58,30 @@ class UserEventConsumerTest {
     // --- USER_REGISTERED ---
 
     @Test
+    void handleUserEvent_userCreated_asAdminSendsIt_cachedWithItsEnabled() {
+        // admin's one creation event (a first sign-in, a sync): chat's user store takes it
+        userEventConsumer.handleUserEvent(Map.of("type", "USER_CREATED", "uuid", USER_UUID.toString(),
+                "email", "new@example.com", "enabled", true));
+
+        verify(userCacheService).cacheUser(USER_UUID, "new@example.com", true);
+    }
+
+    @Test
+    void handleUserEvent_userCreated_disabledInAdmin_cachedDisabled() {
+        userEventConsumer.handleUserEvent(Map.of("type", "USER_CREATED", "uuid", USER_UUID.toString(),
+                "email", "off@example.com", "enabled", false));
+
+        verify(userCacheService).cacheUser(USER_UUID, "off@example.com", false);
+    }
+
+    @Test
+    void handleUserEvent_userCreated_noUuid_nothingCached() {
+        userEventConsumer.handleUserEvent(Map.of("type", "USER_CREATED", "email", "x@example.com", "enabled", true));
+
+        verify(userCacheService, never()).cacheUser(any(), any(), anyBoolean());
+    }
+
+    @Test
     void handleUserEvent_userRegistered_cachesUser() {
         userEventConsumer.handleUserEvent(Map.of("type", "USER_REGISTERED", "uuid", USER_UUID.toString(), "email", "alice@example.com"));
 

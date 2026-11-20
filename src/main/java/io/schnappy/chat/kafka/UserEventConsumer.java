@@ -37,6 +37,7 @@ public class UserEventConsumer {
         }
 
         switch (type) {
+            case "USER_CREATED" -> handleUserCreated(event);
             case "USER_REGISTERED" -> handleUserRegistered(event);
             case "USER_ENABLED", "USER_DISABLED" -> handleUserEnabledChanged(event);
             case "PROFILE_UPDATED" -> handleProfileUpdated(event);
@@ -47,6 +48,21 @@ public class UserEventConsumer {
             case "REGISTRATION_DECLINED" -> handleRegistrationDeclined(event);
             default -> log.debug("Ignoring user event type: {}", type);
         }
+    }
+
+    /**
+     * A user admin knows - provisioned at its first sign-in, or synced again: chat's user store (chat_users, its cache)
+     * takes it with admin's enabled. The one creation event admin sends; without it a new user never reached chat - not
+     * invitable ("User not found"), and its every request asked admin to provision it again.
+     */
+    private void handleUserCreated(Map<String, Object> event) {
+        UUID uuid = toUuid(event.get(EVENT_UUID));
+        String email = (String) event.get(EVENT_EMAIL);
+        if (uuid == null || email == null) return;
+
+        boolean enabled = !Boolean.FALSE.equals(event.get("enabled"));
+        userCacheService.cacheUser(uuid, email, enabled);
+        log.info("Cached user from admin: {} ({}) enabled={}", uuid, email, enabled);
     }
 
     private void handleUserRegistered(Map<String, Object> event) {
