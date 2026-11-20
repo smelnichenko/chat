@@ -132,7 +132,7 @@ public class ArchitectureTest {
     // No package cycles
     //
     // The service ↔ kafka cycle is an intentional architectural trade-off:
-    // services (ChatService, SystemChannelService) depend on ChatKafkaProducer
+    // services (ChatService) depend on ChatKafkaProducer
     // to publish messages, while kafka consumers (UserEventConsumer) depend on
     // services to handle incoming events. These two directions are kept in
     // separate classes and the cycle is accepted. All other package pairs must

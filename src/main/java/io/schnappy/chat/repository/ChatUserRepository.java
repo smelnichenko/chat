@@ -13,7 +13,6 @@ public interface ChatUserRepository extends JpaRepository<ChatUser, Long> {
 
     List<ChatUser> findByEnabledTrue();
 
-    List<ChatUser> findByAdminTrue();
 
     Optional<ChatUser> findByUuid(UUID uuid);
 }

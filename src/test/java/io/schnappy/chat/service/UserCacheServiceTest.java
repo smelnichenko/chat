@@ -12,9 +12,7 @@ import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
-import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -164,94 +162,6 @@ class UserCacheServiceTest {
         assertThat(enabled).isTrue();
     }
 
-    // --- setAdmin ---
-
-    @Test
-    void setAdmin_true_addsToRedisSet() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        var user = new ChatUser();
-        user.setId(10L);
-        user.setUuid(USER_UUID);
-        when(chatUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.of(user));
-        when(chatUserRepository.save(org.mockito.ArgumentMatchers.any(ChatUser.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        userCacheService.setAdmin(USER_UUID, true);
-
-        assertThat(user.isAdmin()).isTrue();
-        verify(setOps).add("chat:admin-users", USER_UUID.toString());
-    }
-
-    @Test
-    void setAdmin_false_removesFromRedisSet() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        var user = new ChatUser();
-        user.setId(10L);
-        user.setUuid(USER_UUID);
-        user.setAdmin(true);
-        when(chatUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.of(user));
-        when(chatUserRepository.save(org.mockito.ArgumentMatchers.any(ChatUser.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        userCacheService.setAdmin(USER_UUID, false);
-
-        assertThat(user.isAdmin()).isFalse();
-        verify(setOps).remove("chat:admin-users", USER_UUID.toString());
-    }
-
-    @Test
-    void setAdmin_userNotFound_stillUpdatesRedis() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        when(chatUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.empty());
-
-        userCacheService.setAdmin(USER_UUID, true);
-
-        verify(setOps).add("chat:admin-users", USER_UUID.toString());
-        verify(chatUserRepository, never()).save(org.mockito.ArgumentMatchers.any());
-    }
-
-    // --- getAdminUserUuids ---
-
-    @Test
-    void getAdminUserUuids_redisHit_returnsFromRedisWithoutPgQuery() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        UUID uuid1 = UUID.randomUUID();
-        UUID uuid2 = UUID.randomUUID();
-        when(setOps.members("chat:admin-users")).thenReturn(Set.of(uuid1.toString(), uuid2.toString()));
-
-        var admins = userCacheService.getAdminUserUuids();
-
-        assertThat(admins).containsExactlyInAnyOrder(uuid1, uuid2);
-        verify(chatUserRepository, never()).findByAdminTrue();
-    }
-
-    @Test
-    void getAdminUserUuids_redisMiss_fallsBackToPostgres() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        when(setOps.members("chat:admin-users")).thenReturn(null);
-
-        var adminUser = new ChatUser();
-        adminUser.setId(5L);
-        adminUser.setUuid(USER_UUID);
-        when(chatUserRepository.findByAdminTrue()).thenReturn(List.of(adminUser));
-
-        var admins = userCacheService.getAdminUserUuids();
-
-        assertThat(admins).containsExactly(USER_UUID);
-        verify(setOps).add("chat:admin-users", USER_UUID.toString());
-    }
-
-    @Test
-    void getAdminUserUuids_emptyRedisSet_fallsBackToPostgres() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        when(setOps.members("chat:admin-users")).thenReturn(Set.of());
-        when(chatUserRepository.findByAdminTrue()).thenReturn(List.of());
-
-        var admins = userCacheService.getAdminUserUuids();
-
-        assertThat(admins).isEmpty();
-    }
-
     // --- getUserInfo ---
 
     @Test
@@ -288,36 +198,4 @@ class UserCacheServiceTest {
 
     // --- addAdminUser / removeAdminUser ---
 
-    @Test
-    void addAdminUser_delegatesToSetAdminTrue() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        var user = new ChatUser();
-        user.setId(10L);
-        user.setUuid(USER_UUID);
-        when(chatUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.of(user));
-        when(chatUserRepository.save(org.mockito.ArgumentMatchers.any(ChatUser.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        userCacheService.addAdminUser(USER_UUID);
-
-        assertThat(user.isAdmin()).isTrue();
-        verify(setOps).add("chat:admin-users", USER_UUID.toString());
-    }
-
-    @Test
-    void removeAdminUser_delegatesToSetAdminFalse() {
-        when(redisTemplate.opsForSet()).thenReturn(setOps);
-        var user = new ChatUser();
-        user.setId(10L);
-        user.setUuid(USER_UUID);
-        user.setAdmin(true);
-        when(chatUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.of(user));
-        when(chatUserRepository.save(org.mockito.ArgumentMatchers.any(ChatUser.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-
-        userCacheService.removeAdminUser(USER_UUID);
-
-        assertThat(user.isAdmin()).isFalse();
-        verify(setOps).remove("chat:admin-users", USER_UUID.toString());
-    }
 }
