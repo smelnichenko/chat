@@ -10,7 +10,6 @@ import com.datastax.oss.driver.api.core.type.reflect.GenericType;
 import io.schnappy.chat.config.KafkaConfig;
 import io.schnappy.chat.dto.ChatMessageDto;
 import io.schnappy.chat.repository.ScyllaMessageRepository;
-import io.schnappy.chat.service.SystemChannelService;
 import io.schnappy.chat.service.UserCacheService;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -133,8 +132,6 @@ class ChatMessageRetryKafkaTest {
     @MockitoBean
     private UserCacheService userCacheService;
 
-    @MockitoBean
-    private SystemChannelService systemChannelService;
 
     @Autowired
     private ListenerContainerRegistry registry;
