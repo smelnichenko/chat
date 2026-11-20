@@ -11,8 +11,12 @@ clone:
   - name: git
     image: woodpeckerci/plugin-git
     settings:
+      home: /tmp  # non-root: its credentials file in a home it can write
       partial: false
       depth: 100
+    backend_options:
+      kubernetes:
+        securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000 }
 
 steps:
   - name: test
@@ -27,26 +31,20 @@ steps:
       SPRING_DATASOURCE_PASSWORD: test
       SPRING_DATA_REDIS_HOST: valkey
     commands:
-      # One Gradle home per CONCURRENT build. Sharing one deadlocks: every step is
-      # its own PID namespace, so the lock file reads 'held by PID 50' while the
-      # contender IS PID 50, and the protocol that asks an owner to release cannot
-      # cross the namespace — it waits out the timeout and fails. A slot is a
-      # directory only one build can occupy: per PULL REQUEST here, main for cd,
-      # its own for each cron. Stale PR homes are pruned after a week.
-      - SLOT="$CI_COMMIT_PULL_REQUEST"; [ -n "$SLOT" ] || SLOT="$CI_PIPELINE_NUMBER"
-      - export GRADLE_USER_HOME=/cache/gradle/chat/pr-$SLOT
+      # One Gradle home for every build of every app, one Gradle on it at a time - by the kernel: the step holds a flock on
+      # /cache/gradle-shared.flock while it runs, released when its processes end however they end (exit, SIGKILL, pod
+      # deleted). A cancelled build still dying in its 20 s grace, an orphaned step pod or a second workflow WAITS instead
+      # of writing the same caches. Gradle's own locks are kernel locks too, but its request to a holder to release goes
+      # over loopback, which no other pod shares - hence this. Never delete the home's *.lock files: a live Gradle holds them.
+      - export GRADLE_USER_HOME=/cache/gradle/shared
       - mkdir -p "$GRADLE_USER_HOME"
-      # Stamp LAST USE. mkdir never refreshes a directory that already exists and Gradle
-      # writes deeper than this level, so a slot's own mtime would freeze at creation --
-      # and the prune below, which every step of every CONCURRENT build runs, would
-      # rm -rf a long-lived PR's Gradle home while that PR was compiling.
-      # Guarded: a slot another image created under a different UID is not ours to stamp,
-      # and a cache that only ages wrongly must not fail the build.
-      - touch "$GRADLE_USER_HOME" 2>/dev/null || true
-      - find /cache/gradle/chat -maxdepth 1 -name 'pr-*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+      - exec 9>>/cache/gradle-shared.flock
+      - 'flock -w 1800 9 || { echo "the shared Gradle home is busy (30 min) - held by: $(cat /cache/gradle-shared.holder 2>/dev/null)"; exit 1; }'
+      - 'echo "$CI_REPO pipeline $CI_PIPELINE_NUMBER step $CI_STEP_NAME since $(date -u +%FT%TZ)" > /cache/gradle-shared.holder'
       - ./gradlew check --no-daemon
     backend_options:
       kubernetes:
+        securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000 }  # the image's own user (ubuntu)
         resources:
           requests: { memory: 2Gi }
           limits: { memory: 4Gi }
@@ -62,23 +60,16 @@ steps:
       - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
     depends_on: [test]
     commands:
-      # One Gradle home per CONCURRENT build. Sharing one deadlocks: every step is
-      # its own PID namespace, so the lock file reads 'held by PID 50' while the
-      # contender IS PID 50, and the protocol that asks an owner to release cannot
-      # cross the namespace — it waits out the timeout and fails. A slot is a
-      # directory only one build can occupy: per PULL REQUEST here, main for cd,
-      # its own for each cron. Stale PR homes are pruned after a week.
-      - SLOT="$CI_COMMIT_PULL_REQUEST"; [ -n "$SLOT" ] || SLOT="$CI_PIPELINE_NUMBER"
-      - export GRADLE_USER_HOME=/cache/gradle/chat/pr-$SLOT
+      # One Gradle home for every build of every app, one Gradle on it at a time - by the kernel: the step holds a flock on
+      # /cache/gradle-shared.flock while it runs, released when its processes end however they end (exit, SIGKILL, pod
+      # deleted). A cancelled build still dying in its 20 s grace, an orphaned step pod or a second workflow WAITS instead
+      # of writing the same caches. Gradle's own locks are kernel locks too, but its request to a holder to release goes
+      # over loopback, which no other pod shares - hence this. Never delete the home's *.lock files: a live Gradle holds them.
+      - export GRADLE_USER_HOME=/cache/gradle/shared
       - mkdir -p "$GRADLE_USER_HOME"
-      # Stamp LAST USE. mkdir never refreshes a directory that already exists and Gradle
-      # writes deeper than this level, so a slot's own mtime would freeze at creation --
-      # and the prune below, which every step of every CONCURRENT build runs, would
-      # rm -rf a long-lived PR's Gradle home while that PR was compiling.
-      # Guarded: a slot another image created under a different UID is not ours to stamp,
-      # and a cache that only ages wrongly must not fail the build.
-      - touch "$GRADLE_USER_HOME" 2>/dev/null || true
-      - find /cache/gradle/chat -maxdepth 1 -name 'pr-*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+      - exec 9>>/cache/gradle-shared.flock
+      - 'flock -w 1800 9 || { echo "the shared Gradle home is busy (30 min) - held by: $(cat /cache/gradle-shared.holder 2>/dev/null)"; exit 1; }'
+      - 'echo "$CI_REPO pipeline $CI_PIPELINE_NUMBER step $CI_STEP_NAME since $(date -u +%FT%TZ)" > /cache/gradle-shared.holder'
       # Pull requests analyse into their OWN project (schnappy-chat-pr): SonarQube CE has no branch analysis, and pull
       # requests writing into schnappy-chat mixed main's record with every branch's - its dashboard showed whoever
       # pushed last (masi's split, 2026-09-20; this repo's 2026-11-16). cd.yaml analyses main into schnappy-chat.
@@ -87,6 +78,7 @@ steps:
       - ./gradlew sonar --no-daemon -Dsonar.projectKey=schnappy-chat-pr -Dsonar.projectName='Schnappy Chat (pull requests)'
     backend_options:
       kubernetes:
+        securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000 }  # the image's own user (ubuntu)
         secrets:
           - name: woodpecker-ci-secrets
             key: sonar_token
@@ -108,5 +100,11 @@ services:
       POSTGRES_DB: monitor_chat
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test
+    backend_options:
+      kubernetes:
+        securityContext: { runAsNonRoot: true, runAsUser: 70, runAsGroup: 70 }  # postgres's own user
   - name: valkey
     image: valkey/valkey:8.1-alpine
+    backend_options:
+      kubernetes:
+        securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 1000 }  # valkey's own user
