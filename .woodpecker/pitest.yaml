@@ -1,5 +1,6 @@
 # Nightly mutation testing with Pitest
-# Woodpecker cron: pitest-nightly, schedule: 0 3 * * *, branch: main
+# Woodpecker cron: pitest-nightly, schedule: 30 3 * * * (UTC: 05:30 in Tallinn - after production's daily load test
+# at 03:00 UTC, which it skewed when both started together; moved 2026-11-21), branch: main
 
 when:
   - event: cron
