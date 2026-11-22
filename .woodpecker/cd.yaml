@@ -20,7 +20,7 @@ clone:
 steps:
   # ============== TEST ==============
   - name: test
-    image: eclipse-temurin:25.0.4_7-jdk
+    image: eclipse-temurin:25.0.5_8-jdk
     volumes:
       - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
     environment:
@@ -54,7 +54,7 @@ steps:
               env: NEXUS_URL
 
   - name: sonar
-    image: eclipse-temurin:25.0.4_7-jdk
+    image: eclipse-temurin:25.0.5_8-jdk
     volumes:
       - ci-cache:/cache   # persistent dependency cache: PVC in infra clusters/production/woodpecker/manifests
     commands:
