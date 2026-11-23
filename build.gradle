@@ -42,7 +42,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-liquibase'
     implementation 'com.datastax.oss:java-driver-core:4.17.0'
     implementation 'com.datastax.oss:java-driver-query-builder:4.17.0'
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.1'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     // Swap the default OkHttp-based OTLP sender for the JDK HttpClient
     // sender. OkHttp sender (v1.55.0) doesn't configure readTimeout/
@@ -88,7 +88,7 @@ jacocoTestReport {
 }
 
 spotbugs {
-    toolVersion = '4.9.8'
+    toolVersion = '4.10.5'
     excludeFilter = file('spotbugs-exclude.xml')
 }
 
