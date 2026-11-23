@@ -43,6 +43,9 @@ dependencies {
     implementation 'com.datastax.oss:java-driver-core:4.17.0'
     implementation 'com.datastax.oss:java-driver-query-builder:4.17.0'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.1'
+    // spring-kafka's JsonSerializer / JsonDeserializer (application.yml) are Jackson 2's - springdoc 3.2 stopped
+    // bringing jackson-databind 2 along (chat's Kafka retry tests: every message refused); Boot's BOM keeps its version
+    runtimeOnly 'com.fasterxml.jackson.core:jackson-databind'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     // Swap the default OkHttp-based OTLP sender for the JDK HttpClient
     // sender. OkHttp sender (v1.55.0) doesn't configure readTimeout/
