@@ -46,6 +46,9 @@ dependencies {
     // spring-kafka's JsonSerializer / JsonDeserializer (application.yml) are Jackson 2's - springdoc 3.2 stopped
     // bringing jackson-databind 2 along (chat's Kafka retry tests: every message refused); Boot's BOM keeps its version
     runtimeOnly 'com.fasterxml.jackson.core:jackson-databind'
+    // and its java.time module (the messages' Instant fields): springdoc 3.1's swagger-core-jakarta brought it, 3.2's
+    // swagger-core does not - without it spring-kafka's mapper fails every message with a time in it
+    runtimeOnly 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     // Swap the default OkHttp-based OTLP sender for the JDK HttpClient
     // sender. OkHttp sender (v1.55.0) doesn't configure readTimeout/
